@@ -21,6 +21,140 @@ async function createClient(
   });
 }
 
+// Risk: the group query API must retain encryption, membership and device state in real browsers.
+test("group queries share encrypted records and recover queued intents after a real IndexedDB reload", async ({
+  page,
+  harness,
+}) => {
+  await openHarness(page, harness.url);
+  const created = await page.evaluate(async (relay) => {
+    const { createClient, IndexedDBGroupStateAdapter, PrivateKeySigner } = window.nostrbase;
+    const adapter = new IndexedDBGroupStateAdapter("browser-private-groups");
+    const owner = createClient({
+      namespace: "browser-groups",
+      relays: [relay],
+      signer: new PrivateKeySigner(new Uint8Array(32).fill(1)),
+      groups: { adapter, deviceId: "12".repeat(32) },
+      timeout: 10000,
+      relayOptions: { keepAlive: 0 },
+    });
+    const signer = new PrivateKeySigner(new Uint8Array(32).fill(2));
+    const member = createClient({
+      namespace: "browser-groups",
+      relays: [relay],
+      signer,
+      timeout: 10000,
+      relayOptions: { keepAlive: 0 },
+    });
+    try {
+      const prepared = await member.groups.publishKeyPackage();
+      if (prepared.error) throw prepared.error;
+      const result = await owner.groups.create({ name: "PRIVATE-BROWSER-TEAM" });
+      if (result.error || !result.data) throw result.error ?? new Error("Group missing");
+      const group = result.data;
+      const insert = await owner
+        .from("todos")
+        .inGroup(group.id)
+        .insert({ id: "shared", title: "PRIVATE-BROWSER-SHARED", done: false });
+      if (insert.error) throw insert.error;
+      const invite = await group.invite(await signer.getPublicKey());
+      if (invite.error) throw invite.error;
+      const invites = await member.groups.invites();
+      if (invites.error || !invites.data?.[0])
+        throw invites.error ?? new Error("Invitation missing");
+      const joined = await member.groups.join(invites.data[0].id);
+      if (joined.error || !joined.data) throw joined.error ?? new Error("Join missing");
+      const row = await member.from("todos").inGroup(group.id).select("id, title").single();
+      if (row.error) throw row.error;
+      const ownerKey = (await owner.auth.getSession()).data?.user.pubkey;
+      if (!ownerKey) throw new Error("Owner missing");
+      const denied = await member
+        .from("todos")
+        .inGroup(group.id)
+        .update({ done: true })
+        .eq("id", "shared")
+        .author(ownerKey);
+      const queued = await owner
+        .from("todos")
+        .inGroup(group.id)
+        .insert({ id: "queued", title: "PRIVATE-BROWSER-QUEUED", done: false })
+        .local()
+        .queue();
+      if (queued.error) throw queued.error;
+      const before = await owner.from("todos").inGroup(group.id).local();
+      if (before.error) throw before.error;
+      const keys = await adapter.keys();
+      const disk = await Promise.all(keys.map((key) => adapter.get(key)));
+      return {
+        groupId: group.id,
+        row: row.data,
+        denied: denied.error?.code,
+        before: before.data?.map((value) => value.id),
+        queued: queued.meta?.receipts?.[0]?.queued,
+        disk,
+      };
+    } finally {
+      await Promise.all([owner.closeAsync(), member.closeAsync()]);
+      await adapter.close();
+    }
+  }, harness.relay.url);
+  expect(created.row).toEqual({ id: "shared", title: "PRIVATE-BROWSER-SHARED" });
+  expect(created.denied).toBe("PERMISSION_DENIED");
+  expect(created.before).toEqual(["shared"]);
+  expect(created.queued).toBe(true);
+  expect(created.disk.length).toBeGreaterThan(0);
+  expect(JSON.stringify(created.disk)).not.toContain("PRIVATE-BROWSER-");
+  expect(JSON.stringify([...harness.relay.events.values()])).not.toContain("PRIVATE-BROWSER-");
+
+  await page.reload();
+  await page.waitForFunction(() => window.harnessReady);
+  const recovered = await page.evaluate(
+    async ({ relay, groupId }) => {
+      const { createClient, IndexedDBGroupStateAdapter, PrivateKeySigner } = window.nostrbase;
+      const adapter = new IndexedDBGroupStateAdapter("browser-private-groups");
+      const client = createClient({
+        namespace: "browser-groups",
+        relays: [relay],
+        signer: new PrivateKeySigner(new Uint8Array(32).fill(1)),
+        groups: { adapter, deviceId: "12".repeat(32) },
+        timeout: 10000,
+        relayOptions: { keepAlive: 0 },
+      });
+      try {
+        const restored = await client.groups.get(groupId);
+        if (restored.error || !restored.data) throw restored.error ?? new Error("Group missing");
+        const before = await client.from("todos").inGroup(groupId).local();
+        if (before.error) throw before.error;
+        const flushed = await restored.data.flush();
+        if (flushed.error) throw flushed.error;
+        const after = await client.from("todos").inGroup(groupId).local().select("id, title");
+        if (after.error) throw after.error;
+        const publicRows = await client.from("todos").local();
+        if (publicRows.error) throw publicRows.error;
+        return {
+          before: before.data?.map((value) => value.id),
+          after: after.data?.sort((a, b) => a.id.localeCompare(b.id)),
+          flushed: flushed.count,
+          publicRows: publicRows.data,
+        };
+      } finally {
+        await client.closeAsync();
+        await adapter.close();
+      }
+    },
+    { relay: harness.relay.url, groupId: created.groupId },
+  );
+  expect(recovered.before).toEqual(["shared"]);
+  expect(recovered.flushed).toBe(1);
+  expect(recovered.after).toEqual([
+    { id: "queued", title: "PRIVATE-BROWSER-QUEUED" },
+    { id: "shared", title: "PRIVATE-BROWSER-SHARED" },
+  ]);
+  expect(recovered.publicRows).toEqual([]);
+  expect(JSON.stringify([...harness.relay.events.values()])).not.toContain("PRIVATE-BROWSER-");
+  await expect.poll(() => harness.relay.activeSubscriptions).toBe(0);
+});
+
 // Risk: persisted queues must preserve signatures, ciphertext and ownership across a real reload.
 test("reload restores public/private signed queues and replays the exact committed events", async ({
   page,
@@ -328,6 +462,7 @@ test("blocked upgrades identify the blocker and complete after its connection cl
     });
     // Deliberately retain this unmanaged connection through a versionchange event.
     db.onversionchange = () => {};
+    Object.assign(window, { upgradeBlocker: db });
   });
   const upgrader = await context.newPage();
   await openHarness(upgrader, harness.url);

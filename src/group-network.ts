@@ -22,6 +22,8 @@ export interface GroupNetworkHost {
   /** Check the captured account and auth revision, including same-key signer replacements. */
   guard(): void | Promise<void>;
   signal(signal?: AbortSignal): AbortSignal;
+  /** Ephemeral caller cancellation for this exact publication; never stored in the outbox. */
+  publicationSignal?(event: NostrEvent): AbortSignal | undefined;
   /** Save the owning group's encrypted ratchet/state before any envelope escapes. */
   beforePublish?(event: NostrEvent): Promise<void>;
   /** Persist the owning group's exact WAL response before Marmot sees the acknowledgements. */
@@ -119,8 +121,8 @@ export class GroupNetwork implements NostrNetworkInterface {
       throw new NostrbaseError("INVALID_QUERY", "Use at least one Nostr group filter.");
     return filters;
   }
-  private signal(): AbortSignal {
-    return AbortSignal.any([this.host.signal(this.lifetime.signal), this.lifetime.signal]);
+  private signal(signal?: AbortSignal): AbortSignal {
+    return AbortSignal.any([this.host.signal(signal), this.lifetime.signal]);
   }
   private serialized<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.lock.then(operation, operation);
@@ -295,7 +297,7 @@ export class GroupNetwork implements NostrNetworkInterface {
               timeout: this.host.timeout,
               signal,
             }),
-          this.signal(),
+          this.signal(this.host.publicationSignal?.(structuredClone(entry.event))),
           true,
         ),
       );
@@ -479,14 +481,23 @@ export class GroupNetwork implements NostrNetworkInterface {
       };
     }
   }
-  async request(relays: string[], input: Filter | Filter[]): Promise<NostrEvent[]> {
+  async request(
+    relays: string[],
+    input: Filter | Filter[],
+    signal?: AbortSignal,
+  ): Promise<NostrEvent[]> {
     const targets = this.targets(relays);
     const filters = this.filters(input);
     await this.guard();
-    const response = await this.bounded((signal) =>
-      this.host.transport.request(targets, filters, { timeout: this.host.timeout, signal }),
+    const combined = this.signal(signal);
+    const response = await this.bounded(
+      (signal) =>
+        this.host.transport.request(targets, filters, { timeout: this.host.timeout, signal }),
+      combined,
     );
     await this.guard();
+    if (combined.aborted)
+      throw new NostrbaseError("ABORTED", "Group network operation was aborted.");
     if (!this.statuses(targets, response.relays).some((relay) => relay.ok))
       throw new NostrbaseError(
         "RELAY_ERROR",

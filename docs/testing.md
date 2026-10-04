@@ -4,7 +4,7 @@
 
 Protect the SDK contracts that apps depend on: signed data, author ownership, convergent records, precise partial results, durable writes, and released resources.
 
-The fast suite has **292 tests in 26 files**. Separate environment projects add browser and external service checks. Tests are selected by risk and behavior. There is no line coverage target. Each test name states its contract or the failure it prevents. A passing suite establishes the stated behaviors within the tested environment.
+The fast suite has **317 tests in 27 files**. Separate environment projects add browser and external service checks. Tests are selected by risk and behavior. There is no line coverage target. Each test name states its contract or the failure it prevents. A passing suite establishes the stated behaviors within the tested environment.
 
 ## Run the suite
 
@@ -12,8 +12,8 @@ Use Node 22.12+ and install the locked dependencies with `npm ci`.
 
 | Command | Purpose |
 | --- | --- |
-| `npm run test-unit` | 226 tests: functions, signer races, SDK behavior, cache isolation, durable commit faults, private group state, and type contracts |
-| `npm run test-integration` | 66 tests: relay messages, realtime, recovery, persistence, private group membership, real HTTP storage, and the built package |
+| `npm run test-unit` | Functions, signer races, SDK behavior, cache isolation, durable commit faults, private group state, and type contracts |
+| `npm run test-integration` | Relay messages, realtime, recovery, persistence, private group membership, real HTTP storage, and the built package |
 | `npm test` | Both Vitest projects |
 | `npm run test-mutations` | Check that eight named contract tests detect deliberate faults |
 | `npm run check` | Formatting, lint, TypeScript, both test projects, and ESM/declaration build |
@@ -59,6 +59,7 @@ Live-service checks require explicit endpoints. They default to read-only operat
 | Broadcast and Presence | Expired or out-of-scope traffic is accepted; stale heartbeats restore a departed session; queued ephemeral traffic or signer changes leak state | `realtime.test.ts` |
 | Personal encryption | Plaintext enters wire/cache/backups; another author reads data; slow decrypt/publish crosses an account change; old versions emit changes | `private-storage.test.ts`, `cache-isolation.unit.test.ts`, `state.unit.test.ts`, `network.integration.test.ts` |
 | Group trust and membership | Forged or foreign proofs enter private records; removed authors gain new writes; noncanonical branches stay visible; peer relay metadata selects unauthorized destinations | `group-records.unit.test.ts`, `group-network.unit.test.ts`, `groups.integration.test.ts`, `groups-failures.integration.test.ts` |
+| Group query scope | Invalid or missing groups fall back to public data; concurrent lookups lose writes; cancellation exposes stale handles or drops accepted receipts | `query.unit.test.ts`, `groups-api.integration.test.ts`, `groups-failures.integration.test.ts`, `groups-restart.integration.test.ts`, `types.test.ts` |
 | Group durability | Consumed MLS state loses received records; retries create fresh ciphertext; partial acknowledgements lose receipts; restart loses pending Welcomes; device or account state crosses scopes | `group-store.unit.test.ts`, `group-recovery.unit.test.ts`, `group-ingress.unit.test.ts`, `groups-restart.integration.test.ts`, `groups-failures.integration.test.ts` |
 | Blossom | Wrong bytes/hashes, invalid descriptors, broad authorization, hidden partial delete failure, redirect credential forwarding, or uncancelled body reads | `private-storage.test.ts`, `storage.integration.test.ts` |
 | Persistence | Namespace crossover, reference mutation, partially committed IndexedDB batches, overlapping cache writes, missing tombstones, or lost writes at close | `durability.unit.test.ts`, `offline-sync.test.ts`, `network.integration.test.ts` |

@@ -32,7 +32,7 @@ await db.from("todos").select().author(pubkey).eq("done", false);
 
 Typed CRUD, upsert, filters, projections, sorting, pages, signer auth, live changes, Broadcast, Presence, personal private tables, Blossom storage, persistence, explicit queued writes, Negentropy recovery, search, schemas, references, migrations, backups, and local tooling are implemented.
 
-[Shared private collections](/docs/groups/) add experimental Marmot membership and MLS encryption. Their query builder is familiar; `groups.create()` and `group.from()` are Nostr-specific extensions. Supabase usually models group membership in tables and enforces access with RLS.
+[Shared private collections](/docs/groups/) add experimental Marmot membership and MLS encryption. Use `db.from("tasks").inGroup(groupId)` with the familiar query builder. `.inGroup()` and group management are Nostrbase extensions, not Supabase methods. Management calls return `{ data, error, meta? }`; partial joins can retain a handle and accepted publication receipts. Supabase usually models group membership in tables and enforces access with RLS. An unavailable group cannot fall back to public records. Group `sync()` uses ordinary Nostr queries, not Negentropy.
 
 ## Partial equivalents
 

@@ -4,6 +4,32 @@ Date: 4 October 2026, Asia/Bangkok.
 
 Version 0.2.0 and the current test expansion were checked locally. Public service checks use a generated development identity. Hosted GitHub workflows and npm publication have not been run.
 
+## Supabase-style group API
+
+This change starts from clean `main` commit `c8eac82` in the managed worktree on `feature/supabase-group-api`. Group management now returns `{ data, error }`, and table queries use `db.from("tasks").inGroup(groupId)`. The `.inGroup()` method is a Nostrbase extension. Record wire encoding is unchanged. See [groups](groups.md) for examples, return types, cancellation, recovery, and migration from the earlier API.
+
+Acceptance checks cover typed query composition, isolation across public/personal/two-group scopes, CRUD, projection, cardinality, queued writes, stored-state restart, and management failures. Regression checks cover cancellation at storage lookup, WebSocket backfill, signing, and partial publication; stale handles after auth changes; concurrent first lookups; exact-envelope retry; and public sync registration. Independent subagents reviewed the source and the browser fixture corrections.
+
+| Check on 4 October 2026 | Result |
+| --- | --- |
+| `npm run check-ci` on Node 26.3.0 | Passed: SDK formatting, lint without warnings, types, tests/build; docs compiler/links; secrets; four workflows; six baseline tests; 8/8 deliberate faults |
+| Full fast SDK suite on Node 22.12.0 and 26.3.0 | Passed: 317 tests in 27 files on each runtime |
+| Real browser group storage | Passed in Chromium, Firefox, and WebKit: invitation/join, scoped records, ownership, ciphertext storage/wire, queued intent reload and flush |
+| `npm run test-extended` on Node 26.3.0 | Passed: 38 infrastructure checks, 28 browser checks, and five extension checks |
+| Browser aggregate | Passed: 28 checks, including Chromium quota rejection |
+| Actual nos2x extension | Passed: five permission, signing, encryption, and failure checks |
+| `npm run test-e2e` | Passed: all 33 Fieldwork app checks across Chromium, Firefox, and WebKit |
+| `npm run example:test:fallback` | Passed: independent relay NIP-77 disabled; recovery uses ordinary queries with a reported fallback reason |
+| Fresh npm-installed archive consumer | Passed: management results and scoped query types, CRUD, queue/flush, restart, ciphertext wire checks, and browser bundle; runtime checks on Node 22.12.0 and 26.3.0 |
+
+The first browser aggregate found invalid chunked HTTP framing while Chromium loaded the test script and an unmanaged IndexedDB connection that Firefox could release. The harness now sends exact UTF-8 bytes with an explicit content length and retains the blocker until page close. All browser checks pass without retries or increased timeouts.
+
+The complete app run also found a lost WebKit pagination click while sample writes moved the button. Fieldwork now disables pagination while sample creation or page loading is active. The existing cursor regression holds a real relay acknowledgement, checks that pagination is disabled, then releases it and verifies all nine records without duplicates. All 33 app checks pass without retries.
+
+The fresh consumer uses registry dependencies in an empty npm app, without source links. Its precompiled bundled engine requires no installer script; strict npm policy reports the upstream `prepare` entry as unapproved. The 2.2 MB unminified browser bundle establishes module resolution, not load performance.
+
+These checks do not establish released White Noise interoperability, cryptographic audit results, concurrent writers sharing one MLS device state, hosted CI execution, or production relay retention. No public deployment writes or npm publication were part of this API change. Logs remain under `output/supabase-*-final.log` and `output/supabase-e2e-verified.log` in the managed worktree.
+
 ## Marmot private collections
 
 This change adds experimental shared private collections with a pinned Marmot engine. It starts from clean `main` commit `ca9ca52` in a managed worktree on `feature/marmot-private-collections`. The API, encrypted wire format, example, and dependency provenance are documented together. See [groups](groups.md) and [vendor provenance](../vendor/README.md).
@@ -27,7 +53,7 @@ A separate empty npm app installs the SDK archive with registry dependencies, wi
 
 The engine archive is precompiled. Its upstream `prepare` entry remains in package metadata, so the consumer's strict npm policy reports that script as unapproved. The recorded install does not require that script to run. The local feature commit uses the existing unsigned fallback after the baseline's recorded 1Password signing failures; Git signing settings remain unchanged.
 
-Group tests do not establish released White Noise interoperability, a production cryptographic audit, real-browser group storage behavior, multi-writer device coordination, or permanent relay retention. Group recovery uses ordinary Nostr requests; Negentropy remains available for public/personal record synchronization. The engine snapshot remains experimental and unpublished by this project.
+Group tests do not establish released White Noise interoperability, a production cryptographic audit, multi-writer device coordination, or permanent relay retention. Group recovery uses ordinary Nostr requests; Negentropy remains available for public/personal record synchronization. The engine snapshot remains experimental and unpublished by this project.
 
 ## Engineering baseline completion
 

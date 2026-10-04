@@ -1,5 +1,5 @@
 import { describe, expect, vi } from "vitest";
-import type { NostrbaseClient } from "../src";
+import type { NostrbaseClient, Result } from "../src";
 import { createClient } from "../src";
 import { MemoryGroupStateAdapter } from "../src/group-store";
 import type { NostrbaseGroup } from "../src/groups";
@@ -11,6 +11,11 @@ import { relayOptions, WireRelay } from "./support/relay";
 
 const aliceDevice = "01".repeat(32);
 const bobDevice = "02".repeat(32);
+function checked<T>(result: Result<T>): T {
+  expect(result.error).toBeNull();
+  return required(result.data);
+}
+
 async function relay(scope: TestScope): Promise<WireRelay> {
   const node = await new WireRelay().start();
   scope.defer(() => node.close());
@@ -50,9 +55,9 @@ async function join(
 ): Promise<NostrbaseGroup<TestDB>> {
   expect((await sdk.groups.publishKeyPackage()).error).toBeNull();
   expect((await owner.invite(await bob.getPublicKey())).error).toBeNull();
-  const invites = await sdk.groups.invites();
+  const invites = checked(await sdk.groups.invites());
   expect(invites).toHaveLength(1);
-  return sdk.groups.join(required(invites[0]).id);
+  return checked(await sdk.groups.join(required(invites[0]).id));
 }
 
 describe("durable Marmot group projections and signed intents", () => {
@@ -62,7 +67,7 @@ describe("durable Marmot group projections and signed intents", () => {
     const node = await relay(scope);
     const adapter = new MemoryGroupStateAdapter();
     const owner = client(scope, node, adapter);
-    const group = await owner.groups.create({ name: "Persistent records" });
+    const group = checked(await owner.groups.create({ name: "Persistent records" }));
     expect(
       (
         await group
@@ -80,7 +85,7 @@ describe("durable Marmot group projections and signed intents", () => {
     const original = required((await group.from("todos").eq("id", "survives").single()).data);
     await owner.closeAsync();
     const reopened = client(scope, node, adapter);
-    const restored = await reopened.groups.get(group.id);
+    const restored = checked(await reopened.groups.get(group.id));
     const frameCount = node.frames.length;
     const local = await restored.from("todos").local();
     expect(local.error).toBeNull();
@@ -93,13 +98,81 @@ describe("durable Marmot group projections and signed intents", () => {
     for (const key of await adapter.keys())
       expect(await adapter.get(key)).not.toContain("PRIVATE-RESTART-STATE");
   });
+  test("routes concurrent initial group queries after restart through one handle and composes queued patches in order", async ({
+    scope,
+  }) => {
+    const node = await relay(scope);
+    const adapter = new MemoryGroupStateAdapter();
+    scope.defer(() => adapter.close());
+    const owner = client(scope, node, adapter);
+    const group = checked(await owner.groups.create({ name: "Concurrent routing" }));
+    expect(
+      (
+        await owner
+          .from("todos")
+          .inGroup(group.id)
+          .insert({ id: "patch", title: "original", done: false })
+      ).error,
+    ).toBeNull();
+    await owner.closeAsync();
+    const reopened = client(scope, node, adapter);
+    const handles: NostrbaseGroup<TestDB>[] = [];
+    const get = reopened.groups.get.bind(reopened.groups);
+    const resolve = vi.spyOn(reopened.groups, "get").mockImplementation(async (id) => {
+      const result = await get(id);
+      if (result.data) handles.push(result.data);
+      return result;
+    });
+    scope.defer(() => resolve.mockRestore());
+    const mutations = await Promise.all([
+      reopened
+        .from("todos")
+        .inGroup(group.id)
+        .update({ title: "CONCURRENT-QUEUED-PATCH" })
+        .eq("id", "patch")
+        .queue()
+        .local()
+        .select()
+        .single(),
+      reopened
+        .from("todos")
+        .inGroup(group.id)
+        .update({ done: true })
+        .eq("id", "patch")
+        .queue()
+        .local()
+        .select()
+        .single(),
+    ]);
+    for (const mutation of mutations) expect(mutation.error).toBeNull();
+    expect(handles).toHaveLength(2);
+    const restored = required(handles[0]);
+    expect(handles[1]).toBe(restored);
+    expect(new Set(mutations.map((result) => required(result.data)._nostr.updatedAt)).size).toBe(2);
+    expect(
+      mutations.some(
+        (result) => result.data?.title === "CONCURRENT-QUEUED-PATCH" && result.data.done,
+      ),
+    ).toBe(true);
+    expect(checked(await restored.flush())).toHaveLength(2);
+    const current = checked(
+      await reopened.from("todos").inGroup(group.id).eq("id", "patch").single(),
+    );
+    expect(current.title).toBe("CONCURRENT-QUEUED-PATCH");
+    expect(current.done).toBe(true);
+    expect(current._nostr.pubkey).toBe(await alice.getPublicKey());
+    expect(handles.every((handle) => handle === restored)).toBe(true);
+    expect(checked(await reopened.from("todos").local())).toEqual([]);
+    expect(JSON.stringify([...node.events.values()])).not.toContain("CONCURRENT-QUEUED-PATCH");
+  });
+
   test("reopens an explicitly queued signed intent and publishes without requesting another author signature", async ({
     scope,
   }) => {
     const node = await relay(scope);
     const adapter = new MemoryGroupStateAdapter();
     const owner = client(scope, node, adapter);
-    const group = await owner.groups.create({ name: "Queued records" });
+    const group = checked(await owner.groups.create({ name: "Queued records" }));
     const before = [...node.events.values()].filter((event) => event.kind === 445).length;
     const queued = await group
       .from("todos")
@@ -113,7 +186,7 @@ describe("durable Marmot group projections and signed intents", () => {
     expect([...node.events.values()].filter((event) => event.kind === 445)).toHaveLength(before);
     await owner.closeAsync();
     const reopened = client(scope, node, adapter);
-    const restored = await reopened.groups.get(group.id);
+    const restored = checked(await reopened.groups.get(group.id));
     const sign = vi.spyOn(alice, "signEvent");
     try {
       const replay = await restored.flush();
@@ -135,7 +208,7 @@ describe("durable Marmot group projections and signed intents", () => {
     const node = await relay(scope);
     const adapter = new MemoryGroupStateAdapter();
     const owner = client(scope, node, adapter);
-    const group = await owner.groups.create({ name: "Rejected publication" });
+    const group = checked(await owner.groups.create({ name: "Rejected publication" }));
     node.writeMode = "reject";
     const result = await group
       .from("todos")
@@ -159,7 +232,7 @@ describe("durable Marmot group projections and signed intents", () => {
     expect(
       attempts.every((frame) => JSON.stringify(frame[1]) === JSON.stringify(signedEnvelope)),
     ).toBe(true);
-    const restored = await reopened.groups.get(group.id);
+    const restored = checked(await reopened.groups.get(group.id));
     expect((await restored.from("todos").eq("id", "retry").single()).data?.title).toBe(
       "PRIVATE-EXACT-RETRY",
     );
@@ -170,7 +243,7 @@ describe("durable Marmot group projections and signed intents", () => {
     const node = await relay(scope);
     const adapter = new MemoryGroupStateAdapter();
     const owner = client(scope, node, adapter);
-    const group = await owner.groups.create({ name: "Same-second recreation" });
+    const group = checked(await owner.groups.create({ name: "Same-second recreation" }));
     const fixed = Date.now();
     const clock = vi.spyOn(Date, "now").mockReturnValue(fixed);
     try {
@@ -204,7 +277,7 @@ describe("durable Marmot group projections and signed intents", () => {
     const node = await relay(scope);
     const adapter = new MemoryGroupStateAdapter();
     const owner = client(scope, node, adapter);
-    const group = await owner.groups.create({ name: "Queued versions" });
+    const group = checked(await owner.groups.create({ name: "Queued versions" }));
     const fixed = Date.now();
     const clock = vi.spyOn(Date, "now").mockReturnValue(fixed);
     try {
@@ -232,7 +305,7 @@ describe("durable Marmot group projections and signed intents", () => {
         .mockImplementation(async () => (await keys()).reverse());
       try {
         const reopened = client(scope, node, adapter);
-        const restored = await reopened.groups.get(group.id);
+        const restored = checked(await reopened.groups.get(group.id));
         const replay = await restored.flush();
         expect(replay.error).toBeNull();
         expect(replay.data).toHaveLength(2);
@@ -253,7 +326,7 @@ describe("durable Marmot group projections and signed intents", () => {
     const node = await relay(scope);
     const adapter = new MemoryGroupStateAdapter();
     const owner = client(scope, node, adapter);
-    const group = await owner.groups.create({ name: "Queued patch composition" });
+    const group = checked(await owner.groups.create({ name: "Queued patch composition" }));
     expect(
       (await group.from("todos").insert({ id: "patch", title: "PUBLISHED-BASE", done: false }))
         .error,
@@ -291,7 +364,7 @@ describe("durable Marmot group projections and signed intents", () => {
     const node = await relay(scope);
     const adapter = new MemoryGroupStateAdapter();
     const owner = client(scope, node, adapter);
-    const group = await owner.groups.create({ name: "Queued uniqueness" });
+    const group = checked(await owner.groups.create({ name: "Queued uniqueness" }));
     expect(
       (await group.from("todos").insert({ id: "pending", title: "FIRST", done: false }).queue())
         .error,
@@ -318,7 +391,7 @@ describe("durable Marmot group projections and signed intents", () => {
     const memberAdapter = new MemoryGroupStateAdapter();
     const owner = client(scope, node, ownerAdapter);
     const member = client(scope, node, memberAdapter, bob, bobDevice);
-    const group = await owner.groups.create({ name: "Removed queue" });
+    const group = checked(await owner.groups.create({ name: "Removed queue" }));
     expect(
       (
         await group
@@ -341,7 +414,7 @@ describe("durable Marmot group projections and signed intents", () => {
     await member.closeAsync();
     expect((await group.remove(await bob.getPublicKey())).error).toBeNull();
     const reopened = client(scope, node, memberAdapter, bob, bobDevice);
-    const removed = await reopened.groups.get(group.id);
+    const removed = checked(await reopened.groups.get(group.id));
     const before = node.frames.length;
     const replay = await removed.flush();
     expect(replay.error?.code).toBe("PERMISSION_DENIED");

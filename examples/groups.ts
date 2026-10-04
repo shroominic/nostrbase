@@ -11,19 +11,41 @@ const owner = createClient<Database>({ ...options, signer: alice });
 const member = createClient<Database>({ ...options, signer: bob });
 try {
   const prepared = await member.groups.publishKeyPackage();
-  if (prepared.error) throw prepared.error;
-  const group = await owner.groups.create({ name: "Team workspace" });
-  const inserted = await group
+  if (prepared.error) {
+    console.error("KeyPackage receipts", prepared.meta?.receipts);
+    throw prepared.error;
+  }
+  const created = await owner.groups.create({ name: "Team workspace" });
+  if (created.error) throw created.error;
+  if (!created.data) throw new Error("Group unavailable");
+  const group = created.data;
+  const inserted = await owner
     .from("tasks")
+    .inGroup(group.id)
     .insert({ id: "website", title: "Build the website", done: false });
-  if (inserted.error) throw inserted.error;
+  if (inserted.error) {
+    console.error("Write receipts", inserted.meta?.receipts);
+    throw inserted.error;
+  }
   const invitation = await group.invite(await bob.getPublicKey());
-  if (invitation.error) throw invitation.error;
-  const invite = (await member.groups.invites()).find((value) => value.joinable);
+  if (invitation.error) {
+    console.error("Invitation receipts", invitation.meta?.receipts);
+    throw invitation.error;
+  }
+  const invitations = await member.groups.invites();
+  if (invitations.error) throw invitations.error;
+  const invite = invitations.data?.find((value) => value.joinable);
   if (!invite) throw new Error("No compatible group invitation");
-  const shared = await member.groups.join(invite.id);
-  const result = await shared
+  const joined = await member.groups.join(invite.id);
+  if (joined.error) {
+    // A partial join can return its group handle and accepted publication receipts.
+    console.error("Join recovery", joined.data?.id, joined.meta?.receipts);
+    throw joined.error;
+  }
+  if (!joined.data) throw new Error("Joined group unavailable");
+  const result = await member
     .from("tasks")
+    .inGroup(joined.data.id)
     .select()
     .author(await alice.getPublicKey());
   if (result.error) throw result.error;

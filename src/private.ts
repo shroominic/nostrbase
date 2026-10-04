@@ -37,7 +37,6 @@ export class NostrbasePrivateTables<DB extends SchemaShape<DB>> implements Query
   constructor(private host: NostrbaseClient<DB>) {}
   from<K extends keyof DB & string>(table: K): QueryBuilder<DB[K]> {
     this.host.assertTable(table);
-    this.host.sync.registerTable(encryptedTable(table));
     return new QueryBuilder<DB[K]>(this, table);
   }
   private async identity(): Promise<{
@@ -203,11 +202,14 @@ export class NostrbasePrivateTables<DB extends SchemaShape<DB>> implements Query
   }
   async execute<T extends object>(table: string, state: QueryState): Promise<Result<Row<T>[]>> {
     try {
+      if (state.groupId !== undefined)
+        throw new NostrbaseError("INVALID_QUERY", "Use client.from(table).inGroup(id) for groups.");
       await this.host.ready();
       this.host.assertOpen();
       if (this.host.signal(state.signal).aborted)
         throw new NostrbaseError("ABORTED", "Private operation was aborted.");
       const { pubkey } = await this.identity();
+      this.host.sync.registerTable(encryptedTable(table));
       if (state.authors?.some((author) => author !== pubkey))
         throw new NostrbaseError(
           "PERMISSION_DENIED",

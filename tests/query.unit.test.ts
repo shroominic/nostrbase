@@ -1,7 +1,10 @@
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 import type { NostrbaseClient } from "../src";
+import { NostrbaseError } from "../src/errors";
 import { encodeRecord } from "../src/protocol";
-import type { QueryBuilder } from "../src/query";
+import type { QueryHost, QueryState } from "../src/query";
+import { QueryBuilder } from "../src/query";
+import type { Result, Row } from "../src/types";
 import type { TestDB } from "./helpers";
 import { alice } from "./helpers";
 import { test } from "./support/lifecycle";
@@ -140,5 +143,171 @@ describe("query builder failure contracts", () => {
     expect(transport.requests).toHaveLength(1);
     expect((await base).error).toBeNull();
     expect(transport.requests).toHaveLength(2);
+  });
+});
+
+const firstGroup = "a1".repeat(32);
+const secondGroup = "b2".repeat(32);
+function routingHost(result: Result<Row<TestDB["todos"]>[]> = { data: [], error: null }) {
+  const calls: { groupId?: string; table: string; state: QueryState }[] = [];
+  const host: QueryHost = {
+    async execute<T extends object>(table: string, state: QueryState): Promise<Result<Row<T>[]>> {
+      calls.push({ table, state });
+      return result as unknown as Result<Row<T>[]>;
+    },
+    async executeInGroup<T extends object>(
+      groupId: string,
+      table: string,
+      state: QueryState,
+    ): Promise<Result<Row<T>[]>> {
+      calls.push({ groupId, table, state });
+      return result as unknown as Result<Row<T>[]>;
+    },
+  };
+  return { host, calls, query: new QueryBuilder<TestDB["todos"]>(host, "todos") };
+}
+const routedRow: Row<TestDB["todos"]> = {
+  id: "one",
+  title: "Private group row",
+  done: false,
+  _nostr: { pubkey: "11".repeat(32), eventId: "22".repeat(32), createdAt: 10, updatedAt: 11 },
+};
+
+describe("explicit group query routing", () => {
+  test("keeps public and distinct group branches immutable and executes each awaited branch once", async () => {
+    const setup = routingHost({ data: [routedRow], error: null });
+    const base = setup.query.eq("done", false);
+    const first = base.inGroup(firstGroup);
+    const second = base.inGroup(secondGroup);
+    await Promise.all([Promise.resolve(first), Promise.resolve(first)]);
+    await second;
+    await base;
+    expect(setup.calls.map((call) => call.groupId)).toEqual([firstGroup, secondGroup, undefined]);
+    expect(
+      setup.calls.every((call) => call.table === "todos" && call.state.predicates.length === 1),
+    ).toBe(true);
+    expect(setup.calls.map((call) => call.state.groupId)).toEqual([
+      firstGroup,
+      secondGroup,
+      undefined,
+    ]);
+  });
+  test("preserves mutation, filter, pagination, queue, signal, projection and cardinality settings across routing", async () => {
+    const setup = routingHost({ data: [routedRow], error: null, count: 1 });
+    const signal = new AbortController().signal;
+    const base = setup.query
+      .update({ done: true })
+      .eq("id", "one")
+      .author(routedRow._nostr.pubkey)
+      .all()
+      .queue()
+      .abortSignal(signal)
+      .page(1)
+      .limit(1)
+      .select("id, title")
+      .single();
+    const result = await base.inGroup(firstGroup);
+    expect(result.data).toEqual({ id: "one", title: "Private group row" });
+    expect(setup.calls).toHaveLength(1);
+    expect(setup.calls[0]?.state).toMatchObject({
+      operation: "update",
+      groupId: firstGroup,
+      patch: { done: true },
+      predicates: [{ field: "id", op: "eq", value: "one" }],
+      authors: [routedRow._nostr.pubkey],
+      allowAll: true,
+      queue: true,
+      local: true,
+      returning: true,
+      signal,
+      page: { size: 1 },
+      limit: 1,
+    });
+    const ordered = await setup.query
+      .inGroup(secondGroup)
+      .order("title", { ascending: false })
+      .range(0, 2)
+      .limit(1);
+    expect(ordered.error).toBeNull();
+    expect(setup.calls[1]?.state).toMatchObject({
+      order: [{ field: "title", ascending: false }],
+      range: [0, 2],
+      limit: 1,
+    });
+  });
+  test("preserves partial publication metadata and selected data from the group executor", async () => {
+    const error = new NostrbaseError("PUBLISH_FAILED", "Only one relay accepted.");
+    const receipt = {
+      id: "one",
+      eventId: "33".repeat(32),
+      relays: [
+        { url: "wss://relay.test", ok: true },
+        { url: "wss://other.test", ok: false },
+      ],
+    };
+    const meta = { relays: receipt.relays, receipts: [receipt], partial: true };
+    const setup = routingHost({ data: [routedRow], error, count: 1, meta });
+    const result = await setup.query.inGroup(firstGroup).select("title").maybeSingle();
+    expect(result.data).toEqual({ title: "Private group row" });
+    expect(result.error).toBe(error);
+    expect(result.meta).toBe(meta);
+    expect(result.count).toBe(1);
+    await expect(Promise.resolve(setup.query.inGroup(firstGroup).throwOnError())).rejects.toBe(
+      error,
+    );
+    expect(setup.calls.every((call) => call.groupId === firstGroup)).toBe(true);
+  });
+  const invalidGroupIds = [
+    "",
+    "abcd",
+    "AB".repeat(32),
+    "a".repeat(63),
+    "a".repeat(65),
+    "gg".repeat(32),
+    undefined,
+    null,
+    10,
+  ];
+  for (const id of invalidGroupIds)
+    test(`rejects invalid group ID ${String(id)} before either executor`, async () => {
+      const setup = routingHost();
+      const result = await setup.query.inGroup(id as string);
+      expect(result.data).toBeNull();
+      expect(result.error?.code).toBe("INVALID_QUERY");
+      expect(setup.calls).toEqual([]);
+    });
+  test("keeps an invalid group error sticky after a valid route and preserves earlier validation errors", async () => {
+    const setup = routingHost();
+    const groupInvalid = setup.query.inGroup("short");
+    expect(
+      (await groupInvalid.inGroup(firstGroup).select("title").maybeSingle()).error?.message,
+    ).toContain("Group ID");
+    const prior = setup.query.limit(-1);
+    expect((await prior.inGroup(firstGroup)).error?.message).toContain("Limit");
+    expect((await prior.inGroup("short")).error?.message).toContain("Limit");
+    expect(setup.calls).toEqual([]);
+  });
+  test("fails closed on unsupported public or personal hosts without invoking their ordinary executor", async () => {
+    const execute = vi.fn(async () => ({ data: [], error: null }));
+    const host: QueryHost = { execute: execute as QueryHost["execute"] };
+    const grouped = new QueryBuilder<TestDB["todos"]>(host, "todos").inGroup(firstGroup);
+    expect((await grouped).error?.code).toBe("INVALID_QUERY");
+    expect((await grouped).error?.code).toBe("INVALID_QUERY");
+    expect(execute).not.toHaveBeenCalled();
+    await expect(Promise.resolve(grouped.throwOnError())).rejects.toMatchObject({
+      code: "INVALID_QUERY",
+    });
+    expect(execute).not.toHaveBeenCalled();
+  });
+  test("memoizes a group lookup failure and never retries it against the public executor", async () => {
+    const setup = routingHost();
+    const execute = vi.spyOn(setup.host, "execute");
+    const failure = new NostrbaseError("NOT_FOUND", "Group is not stored here.");
+    const group = vi.spyOn(setup.host, "executeInGroup").mockRejectedValue(failure);
+    const query = setup.query.inGroup(firstGroup);
+    expect((await query).error).toBe(failure);
+    expect((await query).error).toBe(failure);
+    expect(group).toHaveBeenCalledTimes(1);
+    expect(execute).not.toHaveBeenCalled();
   });
 });

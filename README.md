@@ -103,16 +103,24 @@ Private tables encrypt the record body to the user's own key with NIP-44. The si
 ### 7. Share private collections
 
 ```ts
-const group = await db.groups.create({ name: "Team workspace" });
+const created = await db.groups.create({ name: "Team workspace" });
+if (created.error || !created.data) throw created.error ?? new Error("Group unavailable");
+const group = created.data;
 // Bob first publishes a Marmot KeyPackage from his own client.
-await group.invite(bobPubkey);
-await group.from("tasks").insert({ title: "Build the website", done: false });
-const { data, error } = await group.from("tasks").select();
+const invitation = await group.invite(bobPubkey);
+if (invitation.error) throw invitation.error;
+const write = await db.from("tasks").inGroup(group.id)
+  .insert({ title: "Build the website", done: false });
+if (write.error) throw write.error;
+const { data, error } = await db.from("tasks").inGroup(group.id).select();
+if (error) throw error;
 ```
 
 Marmot manages membership and MLS encryption. Applesauce sends ciphertext through Nostr relays. Members read shared records; each author edits their own records. New members receive signed record snapshots. Durable device state uses a separate self-encrypted adapter.
 
-The query builder is Supabase-style. **Supabase has no built-in `groups.create()` or `group.from()`**; it uses membership tables and Row Level Security. This group handle selects an encrypted scope. The Marmot integration is experimental and uses an unreleased engine snapshot. See [shared private collections](docs/groups.md) for setup, recovery, and limits.
+`.inGroup(groupId)` explicitly selects the encrypted collection. An unavailable group returns an error; the query cannot fall back to a public table. `group.from("tasks")` remains an alias. Group creation, lookup, listing, invitations, and joining return `{ data, error, meta? }`. After a partial join or write, inspect returned data and `meta.receipts` before retrying.
+
+The query builder is Supabase-style. **`.inGroup()` and group management are Nostrbase extensions, not Supabase methods.** Supabase usually uses membership tables and Row Level Security. This SDK has no configurable server access policies. Group `sync()` uses ordinary Nostr queries, not Negentropy. The Marmot integration is experimental and uses an unreleased engine snapshot. See [shared private collections](docs/groups.md) for setup, recovery, and limits.
 
 ## Which Supabase features are available?
 
@@ -129,7 +137,7 @@ The SDK provides the familiar client API and the following Nostr equivalents. Th
 | Live database changes | ✅ | `INSERT`, `UPDATE`, `DELETE` subscriptions |
 | Realtime Broadcast | ✅ | Signed public ephemeral channel messages |
 | Realtime Presence | ✅ | Public session state, heartbeats, and expiry; approximate |
-| Reconnect recovery | ✅ | Pull missing records with Negentropy; ordinary query fallback |
+| Reconnect recovery | ✅ | Public/personal records use Negentropy with query fallback; group sync uses ordinary queries |
 | File storage and uploads | ✅, external service | Blossom upload, download, list, and delete with hash checks |
 | Image transformations | ❌ | Not implemented |
 | Edge Functions / RPC | ❌ | Not implemented |

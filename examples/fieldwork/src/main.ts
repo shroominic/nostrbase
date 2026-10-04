@@ -1,4 +1,4 @@
-import { NostrConnectSigner, PrivateKeySigner, scopeTag, type BlobDescriptor } from "nostrbase";
+import { type BlobDescriptor, NostrConnectSigner, PrivateKeySigner, scopeTag } from "nostrbase";
 import { type Note, type Project, type Task, Workspace } from "./workspace";
 import "./style.css";
 
@@ -98,6 +98,7 @@ function action(id: string, run: () => Promise<void>, event = "click") {
     e.preventDefault();
     if (element(id).getAttribute("aria-busy") === "true") return;
     element(id).setAttribute("aria-busy", "true");
+    renderPaging();
     // Serialize user actions. A slow operation must not silently drop the next click.
     actionTail = actionTail.then(async () => {
       try {
@@ -106,6 +107,7 @@ function action(id: string, run: () => Promise<void>, event = "click") {
         tell(error instanceof Error ? error.message : String(error), true);
       } finally {
         element(id).removeAttribute("aria-busy");
+        renderPaging();
         await renderPending().catch(() => {});
       }
     });
@@ -122,6 +124,12 @@ function renderOperations() {
 async function renderPending() {
   element("pending").textContent = `${(await db.offline.list()).length} pending writes`;
   await inspector?.refresh();
+}
+function renderPaging() {
+  const more = element<HTMLButtonElement>("more");
+  more.hidden = !cursor;
+  // Sample writes can move the button before the pointer click completes.
+  more.disabled = ["sample", "more"].some((id) => element(id).getAttribute("aria-busy") === "true");
 }
 function renderBoard() {
   element("project-title").textContent = project?.title ?? "Make room for good work.";
@@ -146,7 +154,7 @@ function renderBoard() {
       '<div class="empty-column">A little breathing room.<br><small>Tasks will appear here.</small></div>';
   }
   element("task-count").textContent = `${tasks.length} tasks loaded`;
-  element("more").hidden = !cursor;
+  renderPaging();
   element<HTMLButtonElement>("sample").disabled = !author;
   element<HTMLButtonElement>("new-project").disabled = !author;
   for (const input of element<HTMLFormElement>("task-form").querySelectorAll<

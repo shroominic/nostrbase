@@ -71,6 +71,8 @@ No API key, project server, or database migration is needed. The namespace must 
 | Standard Nostr events | `db.events.query(filter)`, `publish(template)`, `subscribe(...)` |
 | Broadcast and Presence | `channel.send(...)`, `track(...)`, `presenceState()` |
 | Private personal records | `db.private.from("todos")` |
+| Shared private records | `db.from("todos").inGroup(groupId)` |
+| Group management | `db.groups.create/get/list/invites/join` with `{ data, error }` results |
 | Files | `db.storage.from(serverOrigin)` |
 | Cached reads and queued writes | `.local()`, `.queue()`, `db.offline.flush()` |
 | Recovery | `db.sync.table("todos")` |
@@ -78,6 +80,8 @@ No API key, project server, or database migration is needed. The namespace must 
 | Release resources | `await db.closeAsync()` |
 
 This is a familiar API for Nostr. It is not a complete Supabase replacement or a SQL database.
+
+`.inGroup(groupId)` is a Nostrbase extension that explicitly selects an experimental encrypted Marmot collection. An unavailable group returns an error; the query cannot fall back to a public table. `group.from(table)` remains an alias. Group management returns `Result<T>`; check errors, partial handles, and `meta.receipts`. See [shared private collections](groups.md) for management signatures and migration from direct return values.
 
 ## Records and ownership
 

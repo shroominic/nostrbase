@@ -32,7 +32,7 @@ On Linux, install browser system libraries with `npx playwright install --with-d
 
 `test-environments` runs the six local Vitest infrastructure projects. `test-extended` adds browser and extension projects. Live deployments require explicit configuration and are excluded from both aggregates.
 
-The eight local projects run 68 checks. The ninth project, `live-services`, runs six deployment checks. See the [verification report](../docs/verification.md) for local results and the public service findings.
+The eight local projects run 71 checks. The ninth project, `live-services`, runs six deployment checks. See the [verification report](../docs/verification.md) for local results and the public service findings.
 
 ## Evidence and limits
 

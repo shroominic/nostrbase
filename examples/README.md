@@ -32,7 +32,7 @@ The example uses Node's built-in WebSocket. Set `NOSTR_PRIVATE_KEY` to a hex or 
 
 ## Extended features
 
-`groups.ts` shows two accounts that create and join a Marmot group, share a private task, and close their clients. Set the configured relay before running it. Both accounts use fixed development keys and memory state. See [shared private collections](../docs/groups.md) for durable device storage, membership, recovery, and the experimental engine limits.
+`groups.ts` shows two accounts that create and join a Marmot group, use `db.from("tasks").inGroup(groupId)` to share a private task, check `{ data, error }` results, and close their clients. It prints partial publication receipts for inspection. `.inGroup()` is a Nostrbase extension; an unavailable group cannot fall back to public data. Set the configured relay before running it. Both accounts use fixed development keys and memory state. See [shared private collections](../docs/groups.md) for durable device storage, membership, recovery, and the experimental engine limits.
 
 `extended.ts` exports `runExtendedExample(relay)`. It demonstrates Zod inference, queued public writes and replay, cursor/text search, author-scoped references, personal encrypted data, Broadcast, Presence, synchronization, migration previews, backups, and the inspector. It uses a temporary development identity and memory persistence. It performs writes to the relay you supply.
 

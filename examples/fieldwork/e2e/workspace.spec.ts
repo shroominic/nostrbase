@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { type Browser, expect, type Page, test } from "@playwright/test";
 import { startRemoteSigner } from "../../../tests/environment/support/remote-signer";
 
 const url = (namespace: string) => `/?workspace=${namespace}`;
@@ -284,8 +284,46 @@ test("a NIP-46 signer in a separate process signs app writes and encrypts person
 test("cursor pages have no duplicate cards and local text search finds later cached records", async ({
   page,
 }) => {
-  await page.getByRole("button", { name: "Load sample project" }).click();
-  await expect(page.locator(".task-card")).toHaveCount(6);
+  let recordId: string | undefined;
+  let entered!: () => void;
+  const held = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let release = () => {};
+  await page.routeWebSocket(/127\.0\.0\.1:18047/, (socket) => {
+    const relay = socket.connectToServer();
+    socket.onMessage((message) => {
+      const frame = JSON.parse(String(message));
+      if (!recordId && frame[0] === "EVENT" && frame[1]?.kind === 30078) recordId = frame[1].id;
+      relay.send(message);
+    });
+    relay.onMessage((message) => {
+      const frame = JSON.parse(String(message));
+      if (frame[0] === "OK" && frame[1] === recordId) {
+        release = () => socket.send(message);
+        entered();
+      } else socket.send(message);
+    });
+  });
+  // Restore this tab's identity through a socket whose sample ACK we can hold.
+  await page.reload();
+  await expect(page.getByRole("button", { name: /Explorer ·/ })).toBeVisible();
+  const sample = page.getByRole("button", { name: "Load sample project" });
+  const more = page.getByRole("button", { name: "Load more tasks" });
+  try {
+    await sample.click();
+    await held;
+    await expect(page.locator(".task-card")).toHaveCount(6);
+    await expect(sample).toHaveAttribute("aria-busy", "true");
+    await expect(more).toBeDisabled();
+  } finally {
+    release();
+  }
+  await expect(page.getByRole("status")).toHaveText(
+    "Sample project loaded. Open a card to edit it.",
+  );
+  await expect(sample).not.toHaveAttribute("aria-busy", "true");
+  await expect(more).toBeEnabled();
   await page.getByRole("button", { name: "Load more tasks" }).click();
   await expect(page.locator(".task-card")).toHaveCount(9);
   const ids = await page

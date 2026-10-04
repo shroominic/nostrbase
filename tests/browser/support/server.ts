@@ -26,12 +26,15 @@ function browserBundle(): Promise<string> {
 
 /** Ephemeral HTTP origin and real WebSocket fixture; reusable by browser/crash/signer projects. */
 export async function startBrowserHarness() {
-  const script = await browserBundle();
+  const script = Buffer.from(await browserBundle(), "utf8");
   const relay = await new WireRelay().start();
   const server = createServer((request, response) => {
     response.setHeader("Cache-Control", "no-store");
     if (request.url === "/harness.js") {
-      response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+      response.writeHead(200, {
+        "Content-Type": "text/javascript; charset=utf-8",
+        "Content-Length": script.byteLength,
+      });
       response.end(script);
     } else if (request.url === "/relay-url") {
       response.writeHead(200, { "Content-Type": "application/json" });

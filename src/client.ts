@@ -223,7 +223,6 @@ export class NostrbaseClient<DB extends SchemaShape<DB> = DefaultSchema> impleme
   }
   from<K extends keyof DB & string>(table: K): QueryBuilder<DB[K]> {
     this.assertTable(table);
-    this.sync.registerTable(table);
     return new QueryBuilder<DB[K]>(this, table);
   }
   async request(filters: Filter[], signal?: AbortSignal): Promise<TransportRead> {
@@ -446,11 +445,37 @@ export class NostrbaseClient<DB extends SchemaShape<DB> = DefaultSchema> impleme
       release();
     }
   }
+  /** Execute the query only within a stored private Marmot group. */
+  async executeInGroup<T extends object>(
+    groupId: string,
+    table: string,
+    state: QueryState,
+  ): Promise<Result<Row<T>[]>> {
+    try {
+      this.assertOpen();
+      this.assertTable(table);
+      if (state.validationError) throw state.validationError;
+      if (state.groupId !== undefined && state.groupId !== groupId)
+        throw new NostrbaseError("INVALID_QUERY", "Query has conflicting group scopes.");
+      const signal = this.signal(state.signal);
+      if (signal.aborted) throw new NostrbaseError("ABORTED", "Operation was aborted.");
+      const group = await this.groups.get(groupId);
+      if (signal.aborted) throw new NostrbaseError("ABORTED", "Operation was aborted.");
+      if (group.error) return { data: null, error: group.error, meta: group.meta };
+      if (!group.data)
+        throw new NostrbaseError("NOT_FOUND", "Private group is not stored on this device.");
+      return await group.data.execute<T>(table, { ...state, groupId });
+    } catch (error) {
+      return { data: null, error: asError(error) };
+    }
+  }
   async execute<T extends object>(table: string, state: QueryState): Promise<Result<Row<T>[]>> {
+    if (state.groupId !== undefined) return this.executeInGroup<T>(state.groupId, table, state);
     try {
       await this.ready();
       if (this.signal(state.signal).aborted)
         throw new NostrbaseError("ABORTED", "Operation was aborted.");
+      this.sync.registerTable(table);
       if (state.operation === "select") {
         const result = await this.readTable<T>(table, state);
         const rows = applyQuery(result.rows, state);

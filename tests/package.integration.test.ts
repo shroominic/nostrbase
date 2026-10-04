@@ -86,11 +86,11 @@ function invalidTypes() {
  // @ts-expect-error unknown table
  client.from("unknown");
  // @ts-expect-error wrong boolean type
- client.from("todos").eq("done", "false");
+ client.from("todos").inGroup("0".repeat(64)).eq("done", "false");
  // @ts-expect-error required field missing
  client.private.from("todos").insert({ title: "incomplete" });
  // @ts-expect-error unknown projection
- client.from("todos").select("id, missing");
+ client.from("todos").inGroup("0".repeat(64)).select("id, missing");
 }
 const inserted = await client.from("todos").insert({ id: "a", title: "public", done: false }).queue().select().single();
 assert.equal(inserted.error, null);
@@ -100,6 +100,29 @@ assert.deepEqual(selected.data, { id: "a", title: "public" });
 const encrypted = await client.private.from("todos").insert({ id: "b", title: "secret", done: false }).queue().select().single();
 assert.equal(encrypted.error, null);
 assert.equal((await client.private.from("todos").local().single()).data?.title, "secret");
+const created: Result<sdk.NostrbaseGroup<DB>> = await client.groups.create({ name: "Consumer group" });
+assert.equal(created.error, null);
+assert.ok(created.data);
+const group = created.data;
+const reopened = await client.groups.get(group.id);
+assert.equal(reopened.error, null);
+assert.equal(reopened.data?.id, group.id);
+const groups = await client.groups.list();
+assert.equal(groups.error, null);
+assert.equal(groups.count, 1);
+assert.equal(groups.data?.[0]?.id, group.id);
+const groupInsert: Result<Pick<Row<DB["todos"]>, "id" | "title"> | null> = await client.from("todos").inGroup(group.id)
+ .insert({ id: "group", title: "GROUP-SECRET", done: false }).queue().local().select("id, title").single();
+assert.equal(groupInsert.error, null);
+assert.deepEqual(groupInsert.data, { id: "group", title: "GROUP-SECRET" });
+assert.equal(groupInsert.meta?.receipts?.[0]?.queued, true);
+const groupLocal = await client.from("todos").inGroup(group.id).local();
+assert.equal(groupLocal.error, null);
+assert.deepEqual(groupLocal.data, []);
+const invalidGroup = await client.groups.get("invalid");
+assert.equal(invalidGroup.error?.code, "INVALID_QUERY");
+const missingGroup = await client.from("todos").inGroup("0".repeat(64)).local();
+assert.equal(missingGroup.error?.code, "NOT_FOUND");
 assert.equal(JSON.stringify((await client.backup.export()).data).includes("secret"), false);
 assert.equal((await client.offline.list()).length, 2);
 assert.equal(wireCalls, 0);

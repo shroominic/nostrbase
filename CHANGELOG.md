@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add explicit encrypted query scope with `db.from(table).inGroup(groupId)`; keep `group.from(table)` as an alias. An unavailable group cannot fall back to public data.
+- Change `groups.create()`, `get()`, `list()`, `invites()`, and `join()` to return `{ data, error, meta? }`. This is a breaking change to the pre-release group API. Check `error`, use `data`, and retain partial join handles and publication receipts for recovery.
+- Honor group query cancellation through relay reads and publication waits. Preserve accepted data and receipts, reject stale handles after auth changes, and serialize concurrent stored-group lookups. Register public and personal sync tables when their queries execute.
+- Disable Fieldwork pagination during sample creation and page reads; verify the busy boundary with a controlled relay acknowledgement in all three browsers.
 - Add experimental Marmot shared private collections: invitations, membership, encrypted CRUD, author-signed history snapshots, subscriptions, device storage, queued intents, and exact-envelope recovery. Preserve the Supabase-style query builder; group management is a Nostr-specific API.
 - Bundle the pinned unreleased Marmot 0.6.0 engine and MLS fork with recorded provenance. This feature has no production cryptographic audit or released White Noise interoperability claim.
 

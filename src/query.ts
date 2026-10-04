@@ -19,6 +19,7 @@ export interface Predicate {
 }
 export interface QueryState {
   operation: "select" | "insert" | "upsert" | "update" | "delete";
+  groupId?: string;
   values?: object[];
   patch?: object;
   predicates: Predicate[];
@@ -36,6 +37,11 @@ export interface QueryState {
 }
 export interface QueryHost {
   execute<T extends object>(table: string, state: QueryState): Promise<Result<Row<T>[]>>;
+  executeInGroup?<T extends object>(
+    groupId: string,
+    table: string,
+    state: QueryState,
+  ): Promise<Result<Row<T>[]>>;
 }
 export function fieldValue(row: object, field: string): unknown {
   if (field.startsWith("_nostr."))
@@ -221,6 +227,15 @@ export class QueryBuilder<T extends object, Selected = Row<T>, C extends Cardina
       cardinality,
       throws,
     );
+  }
+  /** Route this query to a shared private collection. Unsupported hosts never fall back to another scope. */
+  inGroup(groupId: string): QueryBuilder<T, Selected, C> {
+    const validationError =
+      this.state.validationError ??
+      (typeof groupId !== "string" || !/^[0-9a-f]{64}$/.test(groupId)
+        ? new NostrbaseError("INVALID_QUERY", "Group ID must be full lowercase 64-hex.")
+        : undefined);
+    return this.clone({ groupId, validationError });
   }
   select<const Columns extends string = "*">(
     columns?: Columns & Selection<Row<T>, Columns>,
@@ -410,7 +425,17 @@ export class QueryBuilder<T extends object, Selected = Row<T>, C extends Cardina
           "INVALID_QUERY",
           "Select accepts * or comma-separated field names.",
         );
-      const result = await this.host.execute<T>(this.table, this.state);
+      let result: Result<Row<T>[]>;
+      if (this.state.groupId !== undefined) {
+        if (typeof this.host.executeInGroup !== "function")
+          throw new NostrbaseError(
+            "INVALID_QUERY",
+            "This query host does not support group routing.",
+          );
+        result = await this.host.executeInGroup<T>(this.state.groupId, this.table, this.state);
+      } else {
+        result = await this.host.execute<T>(this.table, this.state);
+      }
       if (result.error && this.throws) throw result.error;
       if (result.data === null) return result as Result<QueryData<Selected, C>>;
       const rows = result.data.map((row) =>

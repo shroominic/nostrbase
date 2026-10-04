@@ -1,14 +1,15 @@
 import { PrivateKeySigner } from "applesauce-signers";
+import { finalize, tap } from "rxjs";
 import { describe, expect, vi } from "vitest";
+import type { ClientOptions, NostrbaseClient, Result } from "../src";
 import { createClient } from "../src";
-import type { ClientOptions, NostrbaseClient } from "../src";
-import { MemoryGroupStateAdapter } from "../src/group-store";
 import type { GroupStateAdapter } from "../src/group-store";
+import { MemoryGroupStateAdapter } from "../src/group-store";
 import type { NostrbaseGroup } from "../src/groups";
-import { alice, bob } from "./helpers";
 import type { TestDB } from "./helpers";
-import { required, test } from "./support/lifecycle";
+import { alice, bob } from "./helpers";
 import type { TestScope } from "./support/lifecycle";
+import { deferred, required, test } from "./support/lifecycle";
 import { relayOptions, WireRelay } from "./support/relay";
 
 class ProjectionFaultAdapter implements GroupStateAdapter {
@@ -40,6 +41,11 @@ class ProjectionFaultAdapter implements GroupStateAdapter {
   close() {
     this.saved.close();
   }
+}
+
+function checked<T>(result: Result<T>): T {
+  expect(result.error).toBeNull();
+  return required(result.data);
 }
 
 async function relay(scope: TestScope): Promise<WireRelay> {
@@ -81,8 +87,8 @@ async function join(
 ): Promise<NostrbaseGroup<TestDB>> {
   expect((await sdk.groups.publishKeyPackage()).error).toBeNull();
   expect((await owner.invite(pubkey ?? (await bob.getPublicKey()))).error).toBeNull();
-  const invites = await sdk.groups.invites();
-  return sdk.groups.join(required(invites[0]).id);
+  const invites = checked(await sdk.groups.invites());
+  return checked(await sdk.groups.join(required(invites[0]).id));
 }
 
 describe("Marmot accepted publications and receive persistence failures", () => {
@@ -92,7 +98,7 @@ describe("Marmot accepted publications and receive persistence failures", () => 
     const accepted = await relay(scope);
     const rejected = await relay(scope);
     const sdk = client(scope, [accepted, rejected], alice, { minWriteAcks: 2 });
-    const group = await sdk.groups.create({ name: "Partial acknowledgement" });
+    const group = checked(await sdk.groups.create({ name: "Partial acknowledgement" }));
     rejected.writeMode = "reject";
     const result = await group
       .from("todos")
@@ -121,13 +127,174 @@ describe("Marmot accepted publications and receive persistence failures", () => 
     expect(JSON.stringify(result.meta)).not.toContain("PRIVATE-PARTIAL-ACK");
   });
 
+  test("keeps the accepted row and receipt when cancellation interrupts a second relay, then replays the same encrypted envelope", async ({
+    scope,
+  }) => {
+    const accepted = await relay(scope);
+    const silent = await relay(scope);
+    const sdk = client(scope, [accepted, silent], alice, { minWriteAcks: 2, timeout: 30000 });
+    const group = checked(await sdk.groups.create({ name: "Cancelled partial publication" }));
+    silent.writeMode = "silence";
+    const ack = deferred();
+    const cancelledWait = deferred();
+    const firstRelay = sdk.pool.relay(accepted.url);
+    const secondRelay = sdk.pool.relay(silent.url);
+    const firstEvent = firstRelay.event.bind(firstRelay);
+    const secondEvent = secondRelay.event.bind(secondRelay);
+    const first = vi.spyOn(firstRelay, "event").mockImplementation((...args) =>
+      firstEvent(...args).pipe(
+        tap((response) => {
+          if (response.ok) ack.resolve();
+        }),
+      ),
+    );
+    const second = vi
+      .spyOn(secondRelay, "event")
+      .mockImplementation((...args) =>
+        secondEvent(...args).pipe(finalize(() => cancelledWait.resolve())),
+      );
+    scope.defer(() => first.mockRestore());
+    scope.defer(() => second.mockRestore());
+    const controller = new AbortController();
+    scope.defer(() => controller.abort());
+    const pending = sdk
+      .from("todos")
+      .inGroup(group.id)
+      .insert({ id: "partial-cancel", title: "PRIVATE-CANCELLED-PUBLICATION", done: false })
+      .select()
+      .single()
+      .abortSignal(controller.signal)
+      .then((result) => result);
+    await ack.promise;
+    await expect.poll(() => silent.frames.some((frame) => frame[0] === "EVENT")).toBe(true);
+    const started = performance.now();
+    controller.abort();
+    const result = await pending;
+    await cancelledWait.promise;
+    expect(performance.now() - started).toBeLessThan(5000);
+    expect(result.error?.code).toBe("ABORTED");
+    expect(result.data?.title).toBe("PRIVATE-CANCELLED-PUBLICATION");
+    expect(result.count).toBe(1);
+    expect(result.meta?.partial).toBe(true);
+    expect(result.meta?.receipts).toHaveLength(1);
+    const receipt = required(result.meta?.receipts?.[0]);
+    expect(receipt.id).toBe("partial-cancel");
+    expect(receipt.relays.filter((status) => status.ok)).toEqual([
+      expect.objectContaining({ url: new URL(accepted.url).toString() }),
+    ]);
+    expect(receipt.relays.filter((status) => !status.ok)).toEqual([
+      expect.objectContaining({ url: new URL(silent.url).toString() }),
+    ]);
+    const envelope = required(accepted.events.get(receipt.eventId));
+    expect(envelope.kind).toBe(445);
+    expect(silent.events.has(receipt.eventId)).toBe(false);
+    expect(JSON.stringify(result.meta)).not.toContain("PRIVATE-CANCELLED-PUBLICATION");
+    silent.writeMode = "accept";
+    const replay = await sdk.groups.flush();
+    expect(replay.error).toBeNull();
+    expect(replay.data?.some((item) => item.eventId === receipt.eventId)).toBe(true);
+    expect(silent.events.get(receipt.eventId)).toEqual(envelope);
+    const attempts = silent.frames.filter(
+      (frame) => frame[0] === "EVENT" && (frame[1] as { id?: string }).id === receipt.eventId,
+    );
+    expect(attempts).toHaveLength(2);
+    expect(attempts.every((frame) => JSON.stringify(frame[1]) === JSON.stringify(envelope))).toBe(
+      true,
+    );
+    expect(first).toHaveBeenCalledOnce();
+    const restored = checked(await sdk.groups.get(group.id));
+    expect(checked(await restored.from("todos").local().single())).toEqual(result.data);
+    expect(JSON.stringify([...accepted.events.values(), ...silent.events.values()])).not.toContain(
+      "PRIVATE-CANCELLED-PUBLICATION",
+    );
+  });
+
+  test("returns an accepted group handle and relay receipts when the post-join rotation has partial acknowledgements", async ({
+    scope,
+  }) => {
+    const accepted = await relay(scope);
+    const rejected = await relay(scope);
+    const admin = client(scope, [accepted, rejected], alice, { minWriteAcks: 2 });
+    const member = client(scope, [accepted, rejected], bob, { minWriteAcks: 2 });
+    const group = checked(await admin.groups.create({ name: "Partial join" }));
+    expect((await member.groups.publishKeyPackage()).error).toBeNull();
+    expect((await group.invite(await bob.getPublicKey())).error).toBeNull();
+    const invitation = required(checked(await member.groups.invites())[0]);
+    rejected.writeMode = "reject";
+    const joined = await member.groups.join(invitation.id);
+    expect(joined.error?.code).toBe("PUBLISH_FAILED");
+    expect(joined.meta?.partial).toBe(true);
+    const shared = required(joined.data);
+    expect(shared.id).toBe(group.id);
+    expect(shared.info.members).toContain(await bob.getPublicKey());
+    expect(checked(await member.groups.get(group.id))).toBe(shared);
+    const receipt = required(joined.meta?.receipts?.[0]);
+    expect(receipt.relays.filter((value) => value.ok)).toHaveLength(1);
+    expect(receipt.relays.filter((value) => !value.ok)).toHaveLength(1);
+    const envelope = required(accepted.events.get(receipt.eventId));
+    expect(envelope.kind).toBe(445);
+    rejected.writeMode = "accept";
+    expect((await member.groups.flush()).error).toBeNull();
+    expect(rejected.events.get(receipt.eventId)).toEqual(envelope);
+    const recovered = checked(await member.groups.get(group.id));
+    expect(
+      (
+        await member
+          .from("todos")
+          .inGroup(recovered.id)
+          .insert({ id: "joined", title: "JOIN-RECOVERED", done: false })
+      ).error,
+    ).toBeNull();
+    expect(
+      JSON.stringify([...accepted.events.values(), ...rejected.events.values()]),
+    ).not.toContain("JOIN-RECOVERED");
+  }, 30000);
+
+  test("does not return a disposed accepted join handle after an account change or client close interrupts its backfill", async ({
+    scope,
+  }) => {
+    for (const mode of ["auth", "close"] as const) {
+      const node = await relay(scope);
+      const adapter = new MemoryGroupStateAdapter();
+      scope.defer(() => adapter.close());
+      const options = { timeout: 30000, groups: { adapter, deviceId: "ae".repeat(32) } };
+      const admin = client(scope, [node]);
+      const member = client(scope, [node], bob, options);
+      const group = checked(await admin.groups.create({ name: `Interrupted join ${mode}` }));
+      expect((await member.groups.publishKeyPackage()).error).toBeNull();
+      expect((await group.invite(await bob.getPublicKey())).error).toBeNull();
+      const invitation = required(checked(await member.groups.invites())[0]);
+      await expect.poll(() => node.activeSubscriptions).toBe(0);
+      node.readMode = "silence";
+      const frameCount = node.frames.length;
+      const pending = member.groups.join(invitation.id);
+      await expect.poll(() => node.activeSubscriptions).toBe(1);
+      if (mode === "auth") expect((await member.auth.signInWithSigner(alice)).error).toBeNull();
+      else member.close();
+      const result = await pending;
+      expect(result.data).toBeNull();
+      expect(result.error?.code).toBe(mode === "auth" ? "AUTH_FAILED" : "CLIENT_CLOSED");
+      expect(result.meta?.partial).toBe(true);
+      expect(result.meta?.receipts).toEqual([]);
+      await expect.poll(() => node.activeSubscriptions).toBe(0);
+      expect(node.frames.slice(frameCount).some((frame) => frame[0] === "EVENT")).toBe(false);
+      node.readMode = "eose";
+      await member.closeAsync();
+      const reopened = client(scope, [node], bob, options);
+      const accepted = checked(await reopened.groups.get(group.id));
+      expect(accepted.info.members).toContain(await bob.getPublicKey());
+      await reopened.closeAsync();
+      await admin.closeAsync();
+    }
+  }, 30000);
+
   test("keeps invitation history after failed Welcome fanout and does not resend the membership commit", async ({
     scope,
   }) => {
     const node = await relay(scope);
     const admin = client(scope, [node]);
     const member = client(scope, [node], bob);
-    const group = await admin.groups.create({ name: "Welcome retry" });
+    const group = checked(await admin.groups.create({ name: "Welcome retry" }));
     expect(
       (
         await group
@@ -143,7 +310,7 @@ describe("Marmot accepted publications and receive persistence failures", () => 
     expect(invitation.meta?.partial).toBe(true);
     expect(group.info.members).toContain(await bob.getPublicKey());
     expect(invitation.data?.length).toBeGreaterThanOrEqual(2); // Commit + historical snapshot.
-    expect((await member.groups.invites()).length).toBe(0);
+    expect(checked(await member.groups.invites()).length).toBe(0);
     const groupFrames = node.frames.filter(
       (frame) => frame[0] === "EVENT" && (frame[1] as { kind?: number }).kind === 445,
     );
@@ -155,9 +322,9 @@ describe("Marmot accepted publications and receive persistence failures", () => 
         (frame) => frame[0] === "EVENT" && (frame[1] as { id?: string }).id === commit.id,
       ),
     ).toHaveLength(1);
-    const invites = await member.groups.invites();
+    const invites = checked(await member.groups.invites());
     expect(invites).toHaveLength(1);
-    const shared = await member.groups.join(required(invites[0]).id);
+    const shared = checked(await member.groups.join(required(invites[0]).id));
     expect((await shared.from("todos").eq("id", "history").single()).data?.title).toBe(
       "PRIVATE-WELCOME-HISTORY",
     );
@@ -173,7 +340,7 @@ describe("Marmot accepted publications and receive persistence failures", () => 
     const admin = client(scope, [node]);
     const options = { groups: { adapter, deviceId: "0b".repeat(32) } };
     const member = client(scope, [node], bob, options);
-    const group = await admin.groups.create({ name: "Receive journal" });
+    const group = checked(await admin.groups.create({ name: "Receive journal" }));
     const shared = await join(member, group);
     await group.sync();
     expect(
@@ -192,7 +359,7 @@ describe("Marmot accepted publications and receive persistence failures", () => 
     expect((await adapter.keys()).some((key) => key.includes(":pending-ingress:"))).toBe(true);
     await member.closeAsync();
     const restored = client(scope, [node], bob, options);
-    const reopened = await restored.groups.get(group.id);
+    const reopened = checked(await restored.groups.get(group.id));
     const before = node.frames.length;
     const row = await reopened.from("todos").local().eq("id", "receive").single();
     expect(row.error).toBeNull();
@@ -213,7 +380,7 @@ describe("Marmot accepted publications and receive persistence failures", () => 
     const options = { groups: { adapter, deviceId: "0a".repeat(32) } };
     const admin = client(scope, [node], alice, options);
     const member = client(scope, [node], bob);
-    const group = await admin.groups.create({ name: "Unloaded Welcome recovery" });
+    const group = checked(await admin.groups.create({ name: "Unloaded Welcome recovery" }));
     expect(
       (
         await group
@@ -238,8 +405,8 @@ describe("Marmot accepted publications and receive persistence failures", () => 
     expect([...node.events.values()].filter((event) => event.kind === 1059)).toEqual([]);
     expect((await reopened.groups.flush()).error).toBeNull();
     expect([...node.events.values()].filter((event) => event.kind === 1059)).toHaveLength(1);
-    const invites = await member.groups.invites();
-    const shared = await member.groups.join(required(invites[0]).id);
+    const invites = checked(await member.groups.invites());
+    const shared = checked(await member.groups.join(required(invites[0]).id));
     expect((await shared.from("todos").eq("id", "old").single()).data?.title).toBe(
       "PRIVATE-WELCOME-STORAGE",
     );
@@ -271,7 +438,7 @@ describe("Marmot accepted publications and receive persistence failures", () => 
     const admin = client(scope, [node]);
     const member = client(scope, [node], bob);
     const observer = client(scope, [node], charlie);
-    const group = await admin.groups.create({ name: "Batch admission authority" });
+    const group = checked(await admin.groups.create({ name: "Batch admission authority" }));
     const former = await join(member, group);
     await group.sync();
     const charlieKey = await charlie.getPublicKey();

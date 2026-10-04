@@ -20,6 +20,7 @@ No capability check turns a missing browser binary into a passing test.
 
 | Test | Failure it detects |
 | --- | --- |
+| Shared group query and reload | Encrypted group data crosses scopes, a foreign author can write, or a persisted group intent cannot recover after reload |
 | Reload restores signed public/private queues | Lost writes, changed signatures, plaintext persistence or incorrect replay |
 | Page reopen retains newest versions and tombstones | Old versions or deleted records return after startup |
 | Account change across reload | Another signer decrypts or delivers the previous signer's private queue |
@@ -30,8 +31,8 @@ No capability check turns a missing browser binary into a passing test.
 | Abort and close | Browser socket subscriptions leak or cancellation fails on wire or cache-only reads |
 | Actual origin quota failure | A failed durable commit exposes optimistic data or a receipt; the queue stays broken after quota release |
 
-Eight portable contracts run on all three engines. One quota contract runs on Chromium:
-25 executions. Tests observe requests, transaction completion and browser events. They do
+Nine portable contracts run on all three engines. One quota contract runs on Chromium:
+28 executions. Tests observe requests, transaction completion and browser events. They do
 not use fixed sleeps. Each test gets a separate browser context, temporary HTTP origin,
 loopback relay and fixed development signing keys. Failure artifacts go to
 `output/playwright/browser`; the report is in `output/playwright/browser-report`.

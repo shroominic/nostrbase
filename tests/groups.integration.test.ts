@@ -1,6 +1,6 @@
 import { PrivateKeySigner } from "applesauce-signers";
 import { describe, expect } from "vitest";
-import type { ClientOptions, NostrbaseClient } from "../src";
+import type { ClientOptions, NostrbaseClient, Result } from "../src";
 import { createClient } from "../src";
 import { MemoryGroupStateAdapter } from "../src/group-store";
 import type { GroupChangePayload, NostrbaseGroup } from "../src/groups";
@@ -11,6 +11,11 @@ import { required, test } from "./support/lifecycle";
 import { relayOptions, WireRelay } from "./support/relay";
 
 const charlie = new PrivateKeySigner(new Uint8Array(32).fill(3));
+function checked<T>(result: Result<T>): T {
+  expect(result.error).toBeNull();
+  return required(result.data);
+}
+
 async function relay(scope: TestScope): Promise<WireRelay> {
   const node = await new WireRelay().start();
   scope.defer(() => node.close());
@@ -52,10 +57,10 @@ async function join(
   expect(publication.error).toBeNull();
   expect(publication.data?.length).toBeGreaterThanOrEqual(3);
   expect((await owner.invite(pubkey)).error).toBeNull();
-  const invites = await sdk.groups.invites();
+  const invites = checked(await sdk.groups.invites());
   expect(invites).toHaveLength(1);
   expect(invites[0]?.joinable).toBe(true);
-  return sdk.groups.join(required(invites[0]).id);
+  return checked(await sdk.groups.join(required(invites[0]).id));
 }
 
 describe("Marmot groups over the existing Applesauce WebSocket transport", () => {
@@ -67,10 +72,12 @@ describe("Marmot groups over the existing Applesauce WebSocket transport", () =>
     const reader = client(scope, node, bob);
     const aliceKey = await alice.getPublicKey();
     const bobKey = await bob.getPublicKey();
-    const group = await writer.groups.create({
-      name: "Shared tasks",
-      description: "Private collection",
-    });
+    const group = checked(
+      await writer.groups.create({
+        name: "Shared tasks",
+        description: "Private collection",
+      }),
+    );
     const prior = await group
       .from("todos")
       .insert({ id: "prior", title: "PRIVATE-SNAPSHOT", done: false })
@@ -85,8 +92,9 @@ describe("Marmot groups over the existing Applesauce WebSocket transport", () =>
     expect(restored.error).toBeNull();
     expect(restored.data?.title).toBe("PRIVATE-SNAPSHOT");
     expect(restored.data?._nostr.pubkey).toBe(aliceKey);
-    const denied = await other
+    const denied = await reader
       .from("todos")
+      .inGroup(group.id)
       .update({ done: true })
       .eq("id", "prior")
       .author(aliceKey);
@@ -128,7 +136,12 @@ describe("Marmot groups over the existing Applesauce WebSocket transport", () =>
       .toEqual(["INSERT", "UPDATE", "DELETE"]);
     expect((await other.from("todos").eq("id", "live")).data).toEqual([]);
     expect(
-      (await other.from("todos").insert({ id: "mine", title: "Bob's record", done: false })).error,
+      (
+        await reader
+          .from("todos")
+          .inGroup(group.id)
+          .insert({ id: "mine", title: "Bob's record", done: false })
+      ).error,
     ).toBeNull();
     expect((await group.from("todos").author(bobKey).eq("id", "mine").single()).data?.title).toBe(
       "Bob's record",
@@ -156,7 +169,7 @@ describe("Marmot groups over the existing Applesauce WebSocket transport", () =>
     const adminKey = await alice.getPublicKey();
     const bobKey = await bob.getPublicKey();
     const charlieKey = await charlie.getPublicKey();
-    const owner = await admin.groups.create({ name: "Membership test" });
+    const owner = checked(await admin.groups.create({ name: "Membership test" }));
     const removed = await join(member, owner, bobKey);
     await owner.sync();
     const retained = await join(third, owner, charlieKey);
@@ -195,7 +208,7 @@ describe("Marmot groups over the existing Applesauce WebSocket transport", () =>
     scope.defer(() => adapter.close());
     const options = { groups: { adapter, deviceId: "c".repeat(64) } };
     const first = client(scope, node, alice, options);
-    const owner = await first.groups.create({ name: "Restart test" });
+    const owner = checked(await first.groups.create({ name: "Restart test" }));
     expect(
       (await owner.from("todos").insert({ id: "saved", title: "ENCRYPTED-RESTART", done: false }))
         .error,
@@ -203,15 +216,15 @@ describe("Marmot groups over the existing Applesauce WebSocket transport", () =>
     const id = owner.id;
     await first.closeAsync();
     const restarted = client(scope, node, alice, options);
-    const restored = await restarted.groups.get(id);
+    const restored = checked(await restarted.groups.get(id));
     expect((await restored.from("todos").eq("id", "saved").single()).data?.title).toBe(
       "ENCRYPTED-RESTART",
     );
     await restarted.auth.signInWithSigner(bob);
     expect((await restored.from("todos").local()).error?.code).toBe("AUTH_FAILED");
-    await expect(restarted.groups.get(id)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect((await restarted.groups.get(id)).error?.code).toBe("NOT_FOUND");
     await restarted.auth.signInWithSigner(alice);
-    const accountRestored = await restarted.groups.get(id);
+    const accountRestored = checked(await restarted.groups.get(id));
     expect((await accountRestored.from("todos").local().single()).data?.title).toBe(
       "ENCRYPTED-RESTART",
     );

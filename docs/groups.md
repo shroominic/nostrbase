@@ -6,9 +6,11 @@ This is an **experimental** integration. The pinned Marmot engine is an unreleas
 
 ## Is this the Supabase API?
 
-Queries use the same builder as public tables: `.select()`, `.insert()`, `.upsert()`, `.update()`, `.delete()`, filters, field selection, sorting, and pagination.
+Queries use the same builder as public tables: `db.from("tasks").inGroup(groupId)`, followed by `.select()`, `.insert()`, `.upsert()`, `.update()`, `.delete()`, filters, field selection, sorting, and pagination. `group.from("tasks")` remains an alias for that encrypted scope.
 
-Supabase has no built-in `groups.create()` or `group.from()`. A Supabase app usually stores group IDs and memberships in tables, then uses Row Level Security. Here, a group handle selects an encrypted Marmot scope. Members can read records in that scope. Each author can change their own records. Admins can add or remove members. There are no configurable SQL access policies.
+`.inGroup()` and `db.groups` are Nostrbase extensions, not Supabase methods. A Supabase app usually stores group IDs and memberships in tables, then uses Row Level Security. Here, `.inGroup(groupId)` explicitly selects an encrypted Marmot collection. An invalid, unavailable, or inaccessible group returns an error; the query cannot fall back to a public table. Members can read records in that scope. Each author can change their own records. Admins can add or remove members. There are no configurable SQL access policies.
+
+Building a query does not start public or personal table sync. The SDK registers those tables when an ordinary query executes. A group query uses only its encrypted group scope.
 
 ## Create and invite
 
@@ -26,19 +28,38 @@ const db = createClient({
 });
 await db.auth.signInWithExtension(); // Signer must support NIP-44.
 
-const group = await db.groups.create({ name: "Team workspace" });
-const write = await group.from("tasks").insert({
+const created = await db.groups.create({ name: "Team workspace" });
+if (created.error || !created.data) throw created.error ?? new Error("Group unavailable");
+const group = created.data;
+const write = await db.from("tasks").inGroup(group.id).insert({
   id: "task-1", title: "Build the website", done: false,
 }).select();
-if (write.error) throw write.error;
+if (write.error) {
+  console.error("Accepted rows and receipts", write.data, write.meta?.receipts);
+  throw write.error;
+}
 
 // Bob must first call publishKeyPackage() on his own client and device.
 const bobPubkey = "b".repeat(64); // Replace with Bob's actual public key.
 const invitation = await group.invite(bobPubkey);
-if (invitation.error) throw invitation.error;
+if (invitation.error) {
+  console.error("Invitation receipts", invitation.meta?.receipts);
+  throw invitation.error;
+}
 ```
 
-`create()`, `get()`, `list()`, `invites()`, and `join()` return their value directly and throw on failure. Query builders and publication methods return `{ data, error, meta }`. Check their errors and receipts.
+Group management methods return `Promise<Result<T>>`, with `{ data, error, meta? }`. Query builders and publication methods use the same result shape. Check `error` before using successful data. A partial join or write can return data and receipts together with an error.
+
+| Method | Result data |
+| --- | --- |
+| `db.groups.create({ name, description? })` | `NostrbaseGroup` |
+| `db.groups.get(groupId)` | `NostrbaseGroup` |
+| `db.groups.list()` | `PrivateGroupInfo[]` |
+| `db.groups.invites()` | `PrivateGroupInvite[]` |
+| `db.groups.join(inviteId)` | `NostrbaseGroup` |
+| `db.groups.publishKeyPackage()` / `db.groups.flush()` | `WriteReceipt[]` |
+
+**Pre-release migration:** these five management methods previously returned their data directly and threw on failure. Use `const { data, error } = await db.groups.get(groupId)` and check `error`. Publication methods already returned results. This change does not alter the wire format.
 
 On the recipient's client:
 
@@ -47,10 +68,19 @@ const prepared = await db.groups.publishKeyPackage();
 if (prepared.error) throw prepared.error;
 // The admin can now invite this device's account.
 const invitations = await db.groups.invites();
-const invitation = invitations.find(value => value.joinable);
+if (invitations.error) throw invitations.error;
+const invitation = invitations.data?.find(value => value.joinable);
 if (!invitation) throw new Error("No compatible invitation");
-const group = await db.groups.join(invitation.id);
-const { data, error } = await group.from("tasks").select();
+const joined = await db.groups.join(invitation.id);
+if (joined.error) {
+  // The Welcome may be accepted even if the required leaf update fails.
+  console.error("Join recovery", joined.data?.id, joined.meta?.receipts);
+  throw joined.error;
+}
+if (!joined.data) throw new Error("Joined group unavailable");
+const group = joined.data;
+const { data, error } = await db.from("tasks").inGroup(group.id).select();
+if (error) throw error;
 ```
 
 The device advertises a kind-30443 KeyPackage and kind-10002/10050 relay lists. These public events contain cryptographic discovery data. `publishKeyPackage()` replaces this device's addressable slot. Do not rotate an unused slot repeatedly while invitations are in flight.
@@ -60,13 +90,18 @@ All group network destinations must be in the client's relay configuration. An i
 ## Records, history, and live changes
 
 ```ts
-await group.from("tasks").update({ done: true }).eq("id", "task-1");
-await group.from("tasks").delete().eq("id", "task-1");
+const updated = await db.from("tasks").inGroup(group.id)
+  .update({ done: true }).eq("id", "task-1");
+if (updated.error) throw updated.error;
+const deleted = await db.from("tasks").inGroup(group.id)
+  .delete().eq("id", "task-1");
+if (deleted.error) throw deleted.error;
 
 const subscription = group.subscribe("tasks", change => {
   console.log(change.eventType, change.new, change.old);
 });
-await group.sync();
+const synced = await group.sync();
+if (synced.error) throw synced.error;
 subscription.unsubscribe();
 ```
 
@@ -89,6 +124,8 @@ await group.rotate();         // Rotate this device's MLS leaf key.
 await group.leave();          // Publish a departure proposal and close this handle.
 ```
 
+`remove()`, `rotate()`, and `leave()` return `Result<WriteReceipt[]>`; check each result's `error` and `meta.receipts`. `sync()` returns `Result<PrivateGroupInfo>`. `group.info` is a local view; a handle revoked by sign-out or recovery is no longer usable.
+
 Joining performs the required leaf update after reading the Welcome. Membership operations are MLS commits or proposals, not database transactions. Other members must receive the commit before they use the new epoch. A removal stops access to future epoch secrets. It cannot erase plaintext or old keys already held by the removed member.
 
 The SDK rejects newly admitted record mutations from authors that are absent from its current canonical membership. It keeps records already admitted before removal. This rule depends on receiving the membership commit; disconnected clients cannot know a change that they have not received.
@@ -96,16 +133,26 @@ The SDK rejects newly admitted record mutations from authors that are absent fro
 ## Offline writes and recovery
 
 ```ts
-await group.from("tasks").insert({ title: "Write offline", done: false }).queue();
-await group.flush(); // First sync membership; then encrypt queued signed intents.
+const queued = await db.from("tasks").inGroup(group.id)
+  .insert({ title: "Write offline", done: false }).local().queue();
+if (queued.error) throw queued.error;
+const sent = await group.flush(); // First sync membership; then encrypt signed intents.
+if (sent.error) throw sent.error;
 
-await db.groups.flush(); // Replay existing exact envelopes and retry Welcomes.
+const recovered = await db.groups.flush(); // Replay exact envelopes and retry Welcomes.
+if (recovered.error) throw recovered.error;
 const reopened = await db.groups.get(group.id);
+if (reopened.error || !reopened.data)
+  throw reopened.error ?? new Error("Group unavailable");
 ```
 
 Queued group writes store signed application intents under self encryption. They are not put into the canonical local projection until publication is accepted. On flush, the SDK first catches up membership and encrypts the intent for the current epoch. Once ciphertext has been prepared, retry uses that exact envelope. An unresolved publication blocks new sends until recovery.
 
 The SDK saves an encrypted publication journal before ciphertext leaves the device. It retains the parent and child MLS states for commits, consumed sender ratchets, exact envelopes, application proofs, and unfinished Welcome deliveries. Accepted acknowledgements are preserved even if local completion fails. A failed batch retains accepted rows and receipts. `minWriteAcks` affects SDK success reporting; one real acknowledgement already means a commit left the device, so recovery must preserve it.
+
+Use `.abortSignal(signal)` to cancel a group query. Relay reads and publication waits receive the signal. In-flight storage or signer calls must finish before the SDK checks cancellation at those boundaries. Cancellation cannot reverse a relay acceptance. Check returned data and `meta.receipts` even when the error is `ABORTED`. A prepared publication can remain in the durable journal after cancellation or failure. Recover it with `db.groups.flush()`; recovery retries the exact ciphertext with a new operation lifetime.
+
+On a partial join, `joined.data` can contain the joined handle even when `joined.error` reports an unfinished leaf update or sync. Keep its ID and `joined.meta?.receipts`. Use `db.groups.flush()` for pending publications, then check `db.groups.get(id)` for a fresh handle. An error does not prove that no state change or publication occurred.
 
 If recovery changes stored MLS state, old handles are closed. Get a fresh handle after `db.groups.flush()`. Sign-out and account changes also close existing handles and clear the plaintext projection.
 

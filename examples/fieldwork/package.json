@@ -11,7 +11,7 @@
     "dev": "node serve.mjs"
   },
   "dependencies": {
-    "nostrbase": "file:../../output/fieldwork/nostrbase-0.2.0-24bdb5e9cb7615a85d9a396f3cb1972e225f2de6.tgz",
+    "nostrbase": "file:../../output/fieldwork/nostrbase-0.2.0-dcab9330fbffbf34d2d498edd8b42079d69c6e07.tgz",
     "zod": "4.6.5"
   },
   "devDependencies": {
