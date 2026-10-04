@@ -63,3 +63,7 @@ const completed = await mine.eq("done", true);
 ```
 
 Awaiting the same builder again returns its existing result. Create a new builder to refresh. `.abortSignal(signal)` cancels relay waits. `.throwOnError()` rejects instead of returning an error; use result mode when you need partial-write receipts.
+
+## More filters
+
+See [richer queries](../queries.md) for OR/NOT expressions, raw filter forms, LIKE patterns, nested JSON, collection containment, explicit null order, and count/head queries.

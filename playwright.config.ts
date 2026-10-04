@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/browser",
-  testMatch: "runtime.spec.ts",
+  testMatch: ["runtime.spec.ts", "images.spec.ts", "recovery.spec.ts"],
   outputDir: "output/playwright/browser",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
@@ -24,7 +24,7 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testMatch: ["runtime.spec.ts", "quota.spec.ts"],
+      testMatch: ["runtime.spec.ts", "quota.spec.ts", "images.spec.ts", "recovery.spec.ts"],
       use: { ...devices["Desktop Chrome"] },
     },
     { name: "firefox", use: { ...devices["Desktop Firefox"] } },

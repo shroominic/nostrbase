@@ -86,3 +86,7 @@ const db = createClient({
 ```
 
 File bytes are public unless your app encrypts them before upload. Server storage limits, retention, payments, and upload permissions follow the selected server's policy. Private table encryption does not encrypt file bytes automatically.
+
+## Image transforms
+
+Upload/download `transform` options process raster images locally. Downloaded bytes are hash-verified before processing; transformed uploads receive their own hash and signed authorization. See [image processing](images.md) for browser and Node setup and limits.

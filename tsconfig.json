@@ -4,7 +4,8 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "paths": {
-      "nostrbase": ["./src/index.ts"]
+      "nostrbase": ["./src/index.ts"],
+      "nostrbase/node": ["./src/node.ts"]
     },
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "strict": true,

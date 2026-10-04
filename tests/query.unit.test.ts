@@ -311,3 +311,297 @@ describe("explicit group query routing", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 });
+
+describe("rich Supabase-style predicates", () => {
+  const cases: [string, (query: TodoQuery) => TodoQuery, string[]][] = [
+    [
+      "LIKE keeps case and uses single-character and string wildcards",
+      (q) => q.like("title", "C_fé%"),
+      ["a"],
+    ],
+    ["ILIKE ignores case without removing accents", (q) => q.ilike("title", "%RED"), ["a", "c"]],
+    ["LIKE does not coerce a number", (q) => q.like("priority", "%"), []],
+    ["array overlaps", (q) => q.overlaps("labels", ["red", "none"]), ["a"]],
+    ["raw negative membership", (q) => q.not("id", "in", "(a,b)"), ["c", "d"]],
+    ["raw array containment", (q) => q.not("labels", "cs", "{red}"), ["b", "c", "d"]],
+    ["raw boolean equality", (q) => q.filter("done", "eq", "true"), ["b"]],
+    ["raw scalar number", (q) => q.filter("priority", "eq", "2"), ["b"]],
+    ["raw quoted numeric string stays a string", (q) => q.filter("priority", "eq", '"2"'), []],
+    ["raw quoted array member", (q) => q.filter("labels", "ov", '{"red","blue"}'), ["a", "b"]],
+    [
+      "containedBy reverses array containment",
+      (q) => q.containedBy("labels", ["blue"]),
+      ["b", "c"],
+    ],
+    [
+      "explicit negation retains missing-field inequality",
+      (q) => q.not("priority", "eq", 1),
+      ["b", "c", "d"],
+    ],
+    ["filter operator aliases", (q) => q.filter("labels", "cs", ["red"]), ["a"]],
+    [
+      "OR combines with other chained filters",
+      (q) => q.eq("done", false).or("title.eq.red,priority.eq.1"),
+      ["a", "c"],
+    ],
+    [
+      "nested AND, OR and NOT",
+      (q) => q.or("and(done.eq.false,or(priority.eq.1,priority.eq.3)),not(title.eq.missing)"),
+      ["a", "b", "c"],
+    ],
+    ["negative logical group", (q) => q.or("not.or(priority.eq.1,priority.eq.3)"), ["b", "d"]],
+    ["negative leaf", (q) => q.or("priority.not.in.(1,3)"), ["b", "d"]],
+    ["arrow JSON extraction", (q) => q.eq("details->note", "x"), ["a", "c"]],
+    ["text JSON extraction", (q) => q.ilike("details->>note", "X"), ["a", "c"]],
+    ["logical PostgREST array literal", (q) => q.or("labels.ov.{red,green}"), ["a"]],
+  ];
+  for (const [name, build, expected] of cases)
+    test(name, async ({ scope }) => {
+      const { client, transport } = scope.client();
+      await seed(client);
+      const result = await build(client.from("todos").local());
+      expect(result.error).toBeNull();
+      expect(result.data?.map((row) => row.id).sort()).toEqual(expected);
+      expect(transport.requests).toEqual([]);
+    });
+
+  test("quotes reserved logical values and escapes literal LIKE wildcards", async ({ scope }) => {
+    const { client } = scope.client();
+    for (const [id, title] of [
+      ["literal", 'rate 10%_done, ("yes")'],
+      ["wild", 'rate 100Xdone, ("yes")'],
+      ["emoji", "🌍"],
+    ])
+      client.ingest(
+        await alice.signEvent(
+          encodeRecord("test-app", "todos", id ?? "", { title, done: false }, 10, 10),
+        ),
+      );
+    expect(
+      (await client.from("todos").local().like("title", "rate 10\\%\\_done%")).data?.map(
+        (row) => row.id,
+      ),
+    ).toEqual(["literal"]);
+    expect(
+      (
+        await client
+          .from("todos")
+          .local()
+          .or(`title.eq.${JSON.stringify('rate 10%_done, ("yes")')}`)
+      ).data?.map((row) => row.id),
+    ).toEqual(["literal"]);
+    expect(
+      (await client.from("todos").local().like("title", "_")).data?.map((row) => row.id),
+    ).toEqual(["emoji"]);
+  });
+
+  test("contains recursively matches JSON subsets and never walks a prototype", async ({
+    scope,
+  }) => {
+    const { client } = scope.client({ schema: undefined });
+    client.ingest(
+      await alice.signEvent(
+        encodeRecord(
+          "test-app",
+          "todos",
+          "deep",
+          {
+            title: "deep",
+            done: false,
+            details: {
+              note: "x",
+              owner: { name: "Ada", role: "editor" },
+              entries: [{ score: 3, extra: true }],
+            },
+          },
+          10,
+          10,
+        ),
+      ),
+    );
+    const query = client.from("todos").local();
+    expect(
+      (
+        await query.contains("details", {
+          owner: { name: "Ada" },
+          entries: [{ score: 3 }],
+        } as never)
+      ).data?.map((row) => row.id),
+    ).toEqual(["deep"]);
+    expect((await query.eq("details->owner->>name", "Ada")).data?.map((row) => row.id)).toEqual([
+      "deep",
+    ]);
+    expect((await query.eq("details->entries->0->>score", "3")).data?.map((row) => row.id)).toEqual(
+      ["deep"],
+    );
+    expect((await query.eq("details->toString", "[object Object]")).data).toEqual([]);
+    expect((await query.eq("details->owner->role", "Editor")).data).toEqual([]);
+  });
+
+  test("native field names are literal own keys while raw and arrow paths stay strict", async ({
+    scope,
+  }) => {
+    const { client, transport } = scope.client({ schema: undefined });
+    const data = {
+      title: "literal",
+      done: false,
+      "first-name": "Ada",
+      姓名: "Ada",
+      "meta.note": "literal-dot",
+      "items[0]": "literal-bracket",
+      details: { note: "nested" },
+    };
+    client.ingest(
+      await alice.signEvent(encodeRecord("test-app", "todos", "literal", data, 10, 10)),
+    );
+    type Literal = typeof data;
+    const native = new QueryBuilder<Literal>(client, "todos").local();
+    for (const result of [
+      await native.eq("first-name", "Ada"),
+      await native.match({ 姓名: "Ada" }),
+      await native.filter("meta.note", "eq", "literal-dot"),
+      await native.not("items[0]", "eq", "different"),
+      await native.order("first-name"),
+    ]) {
+      expect(result.error).toBeNull();
+      expect(result.data?.map((row) => row.id)).toEqual(["literal"]);
+    }
+    expect((await native.eq("details->note", "nested")).data).toHaveLength(1);
+    expect((await native.eq("details.note" as never, "nested" as never)).data).toEqual([]);
+    expect((await native.eq("toString" as never, "[object Object]" as never)).data).toEqual([]);
+    for (const expression of [
+      "meta.note.eq.literal-dot",
+      "items[0].eq.literal-bracket",
+      "姓名.eq.Ada",
+      "first-name.eq.Ada",
+    ]) {
+      expect((await native.or(expression)).error?.code).toBe("INVALID_QUERY");
+    }
+    expect((await native.eq("details->>note->x", "x")).error?.code).toBe("INVALID_QUERY");
+    expect(transport.requests).toEqual([]);
+  });
+
+  test("copies nested predicate inputs for contains, match and membership branches", async ({
+    scope,
+  }) => {
+    const { client } = scope.client();
+    await seed(client);
+    const details = { note: "x" };
+    const labels = ["red", "blue"];
+    const members = [labels];
+    const base = client.from("todos").local();
+    const byContains = base.contains("details", details);
+    const byMatch = base.match({ details });
+    const byMembership = base.in("labels", members);
+    details.note = "changed";
+    labels[0] = "changed";
+    members.push([]);
+    expect((await byContains).data?.map((row) => row.id).sort()).toEqual(["a", "c"]);
+    expect((await byMatch).data?.map((row) => row.id).sort()).toEqual(["a", "c"]);
+    expect((await byMembership).data?.map((row) => row.id)).toEqual(["a"]);
+    expect((await base).data).toHaveLength(4);
+  });
+
+  test("nullsFirst is independent of descending direction and keeps missing/null distinct in filters", async ({
+    scope,
+  }) => {
+    const { client } = scope.client({ schema: undefined });
+    for (const [id, priority, time] of [
+      ["null", null, 12],
+      ["one", 1, 13],
+      ["two", 2, 14],
+    ] as const)
+      client.ingest(
+        await alice.signEvent(
+          encodeRecord("test-app", "todos", id, { title: id, done: false, priority }, time, time),
+        ),
+      );
+    client.ingest(
+      await alice.signEvent(
+        encodeRecord("test-app", "todos", "missing", { title: "missing", done: false }, 11, 11),
+      ),
+    );
+    const base = client.from("todos").local();
+    expect(
+      (await base.order("priority", { ascending: false, nullsFirst: false })).data?.map(
+        (row) => row.id,
+      ),
+    ).toEqual(["two", "one", "null", "missing"]);
+    expect(
+      (await base.order("priority", { ascending: true, nullsFirst: true })).data?.map(
+        (row) => row.id,
+      ),
+    ).toEqual(["null", "missing", "one", "two"]);
+    expect((await base.is("priority", null)).data?.map((row) => row.id)).toEqual(["null"]);
+    expect((await base.eq("priority", undefined)).data?.map((row) => row.id)).toEqual(["missing"]);
+  });
+
+  const invalid: [string, (q: TodoQuery) => TodoQuery][] = [
+    ["unknown filter operator", (q) => q.filter("title", "wat" as never, "x" as never)],
+    ["empty logical term", (q) => q.or("title.eq.x,")],
+    ["empty OR group", (q) => q.or("or()")],
+    ["unclosed logical group", (q) => q.or("and(title.eq.x,done.eq.false")],
+    ["trailing logical syntax", (q) => q.or("title.eq.x)")],
+    ["unclosed quote", (q) => q.or('title.eq."x')],
+    ["unsupported logical operator", (q) => q.or("title.wat.x")],
+    ["malformed membership", (q) => q.or("priority.in.1")],
+    ["multi-term NOT", (q) => q.or("not(title.eq.x,done.eq.false)")],
+    ["malformed JSON", (q) => q.or('details.cs.{"note":}')],
+    ["unsupported JSON dot path", (q) => q.or("details.note.eq.x")],
+    ["trailing JSON arrow", (q) => q.eq("details->", "x")],
+    ["text extraction followed by more traversal", (q) => q.eq("details->>note->x", "x")],
+    ["unsupported metadata path", (q) => q.or("_nostr.__proto__.eq.x")],
+    ["incomplete LIKE escape", (q) => q.like("title", "x\\")],
+    ["wrong array filter shape", (q) => q.filter("labels", "ov", "red")],
+    ["wrong is value", (q) => q.filter("done", "is", "wrong")],
+    ["raw expression injection", (q) => q.filter("title", "eq", "x,id.eq.a")],
+    ["raw membership injection", (q) => q.not("id", "in", "(a),id.eq.b")],
+    ["raw quoted injection remains one string", (q) => q.filter("title", "is", '"null,id.eq.a"')],
+    ["null containment", (q) => q.contains("details", null as never)],
+    ["head mutation", (q) => q.select("*", { head: true }).delete()],
+    ["head single", (q) => q.select("*", { head: true }).single() as unknown as TodoQuery],
+    [
+      "head maybeSingle",
+      (q) => q.maybeSingle().select("*", { head: true }) as unknown as TodoQuery,
+    ],
+    ["unsupported count", (q) => q.select("*", { count: "estimated" as never })],
+    ["invalid head value", (q) => q.select("*", { head: 1 as never })],
+    ["null select options", (q) => q.select("*", null as never)],
+    ["invalid nullable ordering", (q) => q.order("priority", { nullsFirst: "yes" as never })],
+    ["order plus cursor", (q) => q.page(1).order("priority", { nullsFirst: true })],
+    [
+      "parser term bound",
+      (q) => q.or(Array.from({ length: 257 }, () => "done.eq.false").join(",")),
+    ],
+    ["parser depth bound", (q) => q.or(`${"or(".repeat(17)}done.eq.false${")".repeat(17)}`)],
+  ];
+  for (const [name, build] of invalid)
+    test(`rejects ${name} before public/group execution`, async () => {
+      const setup = routingHost();
+      const result = await build(setup.query).inGroup(firstGroup);
+      expect(result.data).toBeNull();
+      expect(result.error?.code).toBe("INVALID_QUERY");
+      expect(setup.calls).toEqual([]);
+    });
+
+  test("cyclic and accessor predicate values fail before executing any branch", async () => {
+    const setup = routingHost();
+    const cyclic: { note: string; loop?: unknown } = { note: "x" };
+    cyclic.loop = cyclic;
+    const accessor = Object.defineProperty({}, "note", {
+      enumerable: true,
+      get: () => {
+        throw new Error("getter must not run");
+      },
+    });
+    for (const value of [cyclic, accessor]) {
+      expect((await setup.query.contains("details", value as never)).error?.code).toBe(
+        "INVALID_QUERY",
+      );
+      expect((await setup.query.match({ details: value } as never)).error?.code).toBe(
+        "INVALID_QUERY",
+      );
+    }
+    expect(setup.calls).toEqual([]);
+  });
+});

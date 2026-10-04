@@ -146,7 +146,7 @@ if (reopened.error || !reopened.data)
   throw reopened.error ?? new Error("Group unavailable");
 ```
 
-Queued group writes store signed application intents under self encryption. They are not put into the canonical local projection until publication is accepted. On flush, the SDK first catches up membership and encrypts the intent for the current epoch. Once ciphertext has been prepared, retry uses that exact envelope. An unresolved publication blocks new sends until recovery.
+Queued group writes store signed application intents under self encryption. They are not put into the canonical local projection until publication is accepted. On flush, the SDK first catches up membership and encrypts the intent for the current epoch. Once ciphertext has been prepared, retry uses that exact envelope. An unresolved publication blocks new sends until recovery. With `offline.autoReplay`, the SDK retries stored group envelopes, Welcome deliveries, and signed intents for the active account/device. Recovery can replace handles; use a fresh `db.groups.get(id)` result after it runs. See [automatic replay](automatic-replay.md).
 
 The SDK saves an encrypted publication journal before ciphertext leaves the device. It retains the parent and child MLS states for commits, consumed sender ratchets, exact envelopes, application proofs, and unfinished Welcome deliveries. Accepted acknowledgements are preserved even if local completion fails. A failed batch retains accepted rows and receipts. `minWriteAcks` affects SDK success reporting; one real acknowledgement already means a commit left the device, so recovery must preserve it.
 

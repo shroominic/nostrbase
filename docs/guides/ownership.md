@@ -22,6 +22,6 @@ Apply trusted-author lists or signed role records in the app. Client checks do n
 
 ## Session and key lifecycle
 
-The SDK keeps its signer session in memory and does not persist secret keys. Sign-out clears the session and stops private subscriptions and presence tracking. Your app owns key backup, signer teardown, and plaintext already placed in its UI.
+The SDK keeps its signer session in memory and does not persist secret keys. Sign-out clears the session and stops private subscriptions and presence tracking. Your app owns backup storage, signer teardown, and plaintext already placed in its UI. Use [password-encrypted key backup](../key-backup.md) for local keys. External signer backup stays with that signer.
 
 An extension or remote signer lets the SDK request signatures without storing the user's key in the app. Direct-key signing is available for Node and development workflows.

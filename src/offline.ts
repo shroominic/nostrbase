@@ -1,3 +1,5 @@
+import type { AutoReplayHost, AutoReplayOptions, AutoReplayStatus } from "./auto-replay";
+import { NostrbaseAutoReplay } from "./auto-replay";
 import { asError, NostrbaseError } from "./errors";
 import type { PersistenceAdapter, QueuedEvent } from "./persistence";
 import { MemoryPersistenceAdapter } from "./persistence";
@@ -7,6 +9,7 @@ import type { NostrEvent, Result, Session, WriteReceipt } from "./types";
 export interface OfflineOptions {
   adapter?: PersistenceAdapter;
   maxEntries?: number;
+  autoReplay?: boolean | AutoReplayOptions;
 }
 export interface QueuedWriteReceipt extends WriteReceipt {
   queued: true;
@@ -15,7 +18,11 @@ export interface QueuedWriteReceipt extends WriteReceipt {
 interface OfflineHost {
   namespace: string;
   minWriteAcks: number;
-  auth: { getSession(): Promise<Result<Session>> };
+  auth: {
+    readonly revision?: number;
+    readonly revisionSignal?: AbortSignal;
+    getSession(): Promise<Result<Session>>;
+  };
   ready(): Promise<void>;
   assertOpen(): void;
   signal(signal?: AbortSignal): AbortSignal;
@@ -43,6 +50,7 @@ export class NostrbaseOffline {
   private owned: boolean;
   private closed = false;
   private hydration?: Promise<void>;
+  private replay?: NostrbaseAutoReplay;
   constructor(
     private host: OfflineHost,
     options: OfflineOptions = {},
@@ -53,6 +61,32 @@ export class NostrbaseOffline {
     this.maximum = options.maxEntries ?? 1000;
     if (!Number.isSafeInteger(this.maximum) || this.maximum < 1)
       throw new NostrbaseError("INVALID_CONFIG", "offline.maxEntries must be a positive integer.");
+  }
+  /** Installed by the client after all queue hosts exist. */
+  attachAutoReplay(host: AutoReplayHost, options?: boolean | AutoReplayOptions): void {
+    this.replay = new NostrbaseAutoReplay(host);
+    if (options) this.replay.start(options === true ? {} : options);
+  }
+  startAutoReplay(options: AutoReplayOptions = {}): void {
+    this.host.assertOpen();
+    if (!this.replay)
+      throw new NostrbaseError("INVALID_CONFIG", "Automatic replay needs a client host.");
+    this.replay.start(options);
+  }
+  stopAutoReplay(): void {
+    this.replay?.stop();
+  }
+  get autoReplayStatus(): AutoReplayStatus {
+    return (
+      this.replay?.status ?? { running: false, inFlight: false, failures: 0, nextRetryAt: null }
+    );
+  }
+  /** Wake only after a durable queue/publication obligation is committed. */
+  notifyReplayWork(): void {
+    this.replay?.wake();
+  }
+  async hasPending(pubkey: string): Promise<boolean> {
+    return (await this.list()).some((entry) => entry.event.pubkey === pubkey);
   }
   /** Restore optimistic signed writes from the durable queue after cache hydration. */
   ready(): Promise<void> {
@@ -122,6 +156,7 @@ export class NostrbaseOffline {
         );
         const entry = previous ?? { event: signed, queuedAt, attempts: 0, relays: [] };
         await this.adapter.putQueue(entry, this.host.namespace);
+        this.notifyReplayWork();
         // Only expose optimistic state after the queue write commits.
         this.host.ingest(signed);
         return {
@@ -168,7 +203,21 @@ export class NostrbaseOffline {
     const receipts: WriteReceipt[] = [];
     try {
       return await this.serialized(async () => {
-        const signal = this.host.signal(options.signal);
+        const revision = this.host.auth.revision;
+        const revisionSignal = this.host.auth.revisionSignal;
+        const signal = this.host.signal(
+          revisionSignal
+            ? AbortSignal.any([revisionSignal, ...(options.signal ? [options.signal] : [])])
+            : options.signal,
+        );
+        const guard = async () => {
+          if (signal.aborted) throw new NostrbaseError("ABORTED", "Queue replay was aborted.");
+          if (this.host.auth.revision !== revision || (await this.owner()) !== pubkey)
+            throw new NostrbaseError(
+              "AUTH_FAILED",
+              "The active account changed during queue replay.",
+            );
+        };
         if (signal.aborted) throw new NostrbaseError("ABORTED", "Queue replay was aborted.");
         const pubkey = await this.owner();
         const rawQueue = await this.adapter.loadQueue(this.host.namespace);
@@ -189,19 +238,11 @@ export class NostrbaseOffline {
             continue;
           }
           if (entry.event.pubkey !== pubkey) continue;
-          if ((await this.owner()) !== pubkey)
-            throw new NostrbaseError(
-              "AUTH_FAILED",
-              "The active account changed during queue replay.",
-            );
+          await guard();
           // Record the attempt first. A crash can cause an identical event to be replayed safely.
           entry.attempts++;
           await this.adapter.putQueue(entry, this.host.namespace);
-          if ((await this.owner()) !== pubkey)
-            throw new NostrbaseError(
-              "AUTH_FAILED",
-              "The active account changed during queue replay.",
-            );
+          await guard();
           if (signal.aborted) throw new NostrbaseError("ABORTED", "Queue replay was aborted.");
           const receipt = await this.host.publish(structuredClone(entry.event), signal);
           receipts.push(receipt);
@@ -243,6 +284,8 @@ export class NostrbaseOffline {
   }
   async close(): Promise<void> {
     this.closed = true;
+    this.stopAutoReplay();
+    await this.replay?.idle();
     await this.lock;
     await this.hydration?.catch(() => {});
     if (this.owned) await this.adapter.close();

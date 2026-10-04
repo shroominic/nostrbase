@@ -1,11 +1,14 @@
 import type { NostrbaseClient } from "./client";
 import { asError, NostrbaseError } from "./errors";
+import type { ImageProcessingOptions, ImageProcessor, ImageTransformOptions } from "./image";
+import { CanvasImageProcessor, imageAbort, imageInput, imageOptions } from "./image";
 import { isObject } from "./protocol";
 import type { Result, SchemaShape } from "./types";
 
 export interface StorageOptions {
   fetch?: typeof globalThis.fetch;
   timeout?: number;
+  imageProcessor?: ImageProcessor;
 }
 export interface StorageRequestOptions {
   signal?: AbortSignal;
@@ -13,6 +16,10 @@ export interface StorageRequestOptions {
 }
 export interface StorageDownloadOptions extends StorageRequestOptions {
   /** Send a scoped get token. Public downloads do not require a signer. */ authenticated?: boolean;
+  transform?: ImageTransformOptions;
+}
+export interface StorageUploadOptions extends StorageRequestOptions {
+  transform?: ImageTransformOptions;
 }
 export interface StorageListOptions extends StorageRequestOptions {
   cursor?: string;
@@ -127,10 +134,38 @@ export class NostrbaseStorage<DB extends SchemaShape<DB>> {
       (!Number.isSafeInteger(options.timeout) || options.timeout <= 0)
     )
       throw new NostrbaseError("INVALID_CONFIG", "Storage timeout must be a positive integer.");
+    if (
+      options.imageProcessor !== undefined &&
+      (!options.imageProcessor || typeof options.imageProcessor.process !== "function")
+    )
+      throw new NostrbaseError(
+        "INVALID_CONFIG",
+        "Storage imageProcessor must implement process().",
+      );
   }
   from(server: string): BlossomBucket<DB> {
     this.host.assertOpen();
     return new BlossomBucket(this.host, serverURL(server), this.options);
+  }
+  /** Process image bytes locally. This method does not contact a server. */
+  async processImage(blob: Blob, options: ImageProcessingOptions = {}): Promise<Result<Blob>> {
+    try {
+      this.host.assertOpen();
+      const { signal: callerSignal, ...input } = options;
+      const transform = imageOptions(input);
+      const signal = this.host.signal(callerSignal);
+      await imageInput(blob, signal);
+      const data = await (this.options.imageProcessor ?? new CanvasImageProcessor()).process(
+        blob,
+        transform,
+        signal,
+      );
+      imageAbort(signal);
+      await imageInput(data, signal);
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error: asError(error, "INVALID_RECORD") };
+    }
   }
 }
 
@@ -209,7 +244,7 @@ export class BlossomBucket<DB extends SchemaShape<DB>> {
   async upload(
     name: string,
     blob: Blob,
-    options: StorageRequestOptions = {},
+    options: StorageUploadOptions = {},
   ): Promise<Result<StoredBlob>> {
     try {
       this.host.assertOpen();
@@ -217,6 +252,15 @@ export class BlossomBucket<DB extends SchemaShape<DB>> {
         throw new NostrbaseError("INVALID_RECORD", "Upload requires a file name and Blob.");
       if (options.signal?.aborted)
         throw new NostrbaseError("ABORTED", "Storage operation was aborted.");
+      if (options.transform !== undefined) {
+        const processed = await this.host.storage.processImage(blob, {
+          ...imageOptions(options.transform),
+          signal: options.signal,
+        });
+        if (processed.error || !processed.data)
+          throw processed.error ?? new NostrbaseError("INVALID_RECORD", "Image processing failed.");
+        blob = processed.data;
+      }
       const hash = await sha256(blob);
       const authorization = await this.token("upload", hash);
       const data = await this.request(
@@ -241,6 +285,8 @@ export class BlossomBucket<DB extends SchemaShape<DB>> {
   async download(hash: string, options: StorageDownloadOptions = {}): Promise<Result<Blob>> {
     try {
       validHash(hash);
+      const transform =
+        options.transform === undefined ? undefined : imageOptions(options.transform);
       const headers: Record<string, string> = {};
       if (options.authenticated) headers.Authorization = await this.token("get", hash);
       const data = await this.request(
@@ -257,6 +303,8 @@ export class BlossomBucket<DB extends SchemaShape<DB>> {
           return blob;
         },
       );
+      if (transform)
+        return this.host.storage.processImage(data, { ...transform, signal: options.signal });
       return { data, error: null };
     } catch (error) {
       return { data: null, error: asError(error) };

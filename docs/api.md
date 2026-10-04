@@ -253,7 +253,14 @@ Zod inference, migrations, references, backups, diagnostics, and the local dashb
 - Relays provide storage, delivery, and their own policy. Relay acceptance does not guarantee permanent retention, complete reads, or deletion from every copy.
 - Versions use the latest timestamp, then the lowest event id for a tie. Concurrent edits on different devices can overwrite each other. There are no transactions, foreign keys, global uniqueness rules, or SQL joins.
 - The SDK uses a monotonically increasing timestamp per known address. Many updates within one second can move timestamps into the future. A relay can reject those events; use an app write rate suited to its policy.
-- The default cache and queue are in memory. Configure IndexedDB for durable browser storage. Opt-in startup/reconnect sync pulls missing stored events; replay of queued writes is explicit. Cached history and tombstones have no automatic eviction.
+- The default cache and queue are in memory. Configure IndexedDB for durable browser storage. Opt-in startup/reconnect sync pulls missing stored events; replay is manual by default, with opt-in automatic retries through `offline.autoReplay`. Cached history and tombstones have no automatic eviction.
 - Files need an external Blossom server. RPC functions and server-enforced business rules are outside this version; app logic runs on the client.
 
 See [the protocol](protocol.md), [examples](../examples/README.md), and [contributor guide](../CONTRIBUTING.md).
+
+## Key recovery, richer queries, replay, and images
+
+- [Key backup and recovery](key-backup.md): `db.auth.exportKey(password)` and `signInWithEncryptedKey(ncryptsec, password)` use NIP-49. These recover a local Nostr identity. External signer export and lost MLS device secrets remain separate.
+- [Richer queries](queries.md): logical filters, LIKE patterns, JSON paths, collection containment, null sorting, and `.select("*", { count: "exact", head: true })`. Counts refer to the verified rows available to this operation.
+- [Automatic queue replay](automatic-replay.md): configure `offline: { autoReplay: true }`, or use `db.offline.startAutoReplay()` / `stopAutoReplay()`. Inspect `autoReplayStatus` and result callbacks for failed or partial attempts.
+- [Image processing](images.md): `db.storage.processImage(blob, options)`, upload/download `transform` options, and the optional `SharpImageProcessor` from `nostrbase/node`. Hash verification and authorization still identify the actual stored bytes.

@@ -173,7 +173,14 @@ await save(
   (await readFile(resolve(root, "CONTRIBUTING.md"), "utf8")).replace(/^# [^\n]+\n+/, ""),
 );
 
-const declarationText = await readFile(resolve(root, "dist/index.d.ts"), "utf8");
+// tsup can move types shared by the browser and Node entries into a declaration chunk.
+// Include every emitted declaration so the reference covers both public entries.
+const declarationFiles = (await readdir(resolve(root, "dist"))).filter((file) =>
+  file.endsWith(".d.ts"),
+);
+const declarationText = (
+  await Promise.all(declarationFiles.map((file) => readFile(resolve(root, "dist", file), "utf8")))
+).join("\n");
 const declarationFile = ts.createSourceFile(
   "index.d.ts",
   declarationText,
@@ -188,7 +195,8 @@ for (const statement of declarationFile.statements) {
     statement.exportClause &&
     ts.isNamedExports(statement.exportClause)
   ) {
-    for (const item of statement.exportClause.elements) exported.add(item.name.text);
+    for (const item of statement.exportClause.elements)
+      exported.add(item.propertyName?.text ?? item.name.text);
   }
 }
 const declarations = new Map();

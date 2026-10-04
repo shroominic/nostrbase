@@ -51,9 +51,9 @@ const cases = [
     name: "queue commits before optimistic exposure",
     source: "src/offline.ts",
     before:
-      "await this.adapter.putQueue(entry, this.host.namespace);\n        // Only expose optimistic state after the queue write commits.\n        this.host.ingest(signed);",
+      "await this.adapter.putQueue(entry, this.host.namespace);\n        this.notifyReplayWork();\n        // Only expose optimistic state after the queue write commits.\n        this.host.ingest(signed);",
     after:
-      "this.host.ingest(signed);\n        await this.adapter.putQueue(entry, this.host.namespace);",
+      "this.host.ingest(signed);\n        await this.adapter.putQueue(entry, this.host.namespace);\n        this.notifyReplayWork();",
     file: "tests/durability.unit.test.ts",
     test: "a failed durable enqueue cannot expose optimistic state",
   },

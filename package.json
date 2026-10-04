@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
     }
   },
   "files": [
@@ -90,6 +94,7 @@
   },
   "dependencies": {
     "@internet-privacy/marmot-ts": "file:vendor/internet-privacy-marmot-ts-0.6.0-nostrbase.2.tgz",
+    "@scure/base": "2.4.0",
     "applesauce-core": "^6.2.0",
     "applesauce-relay": "^6.2.1",
     "applesauce-signers": "^6.2.3",
@@ -105,6 +110,7 @@
     "deno": "2.9.6",
     "esbuild": "0.28.2",
     "fake-indexeddb": "6.2.5",
+    "sharp": "0.35.5",
     "tsup": "8.5.1",
     "typescript": "5.9.3",
     "vitest": "5.0.3",
@@ -118,5 +124,13 @@
   ],
   "bundleDependencies": [
     "@internet-privacy/marmot-ts"
-  ]
+  ],
+  "peerDependencies": {
+    "sharp": "^0.35.5"
+  },
+  "peerDependenciesMeta": {
+    "sharp": {
+      "optional": true
+    }
+  }
 }

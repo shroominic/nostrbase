@@ -1,22 +1,38 @@
 import { asError, NostrbaseError } from "./errors";
+import {
+  type DeepPartial,
+  equal,
+  type FilterOperator,
+  type FilterValue,
+  fieldPath,
+  fieldValue,
+  makeFilterPredicate,
+  makePredicate,
+  matches,
+  type Predicate,
+  parseOr,
+  type QueryField,
+  type QueryFieldValue,
+  snapshotValue,
+} from "./query-filters";
 import type { Cardinality, Insert, Projection, QueryData, Result, Row, Selection } from "./types";
 
-export type PredicateOperator =
-  | "eq"
-  | "neq"
-  | "in"
-  | "gt"
-  | "gte"
-  | "lt"
-  | "lte"
-  | "is"
-  | "textSearch"
-  | "contains";
-export interface Predicate {
-  field: string;
-  op: PredicateOperator;
-  value: unknown;
+export type {
+  DeepPartial,
+  FilterOperator,
+  FilterValue,
+  Predicate,
+  PredicateOperator,
+  QueryField,
+  QueryFieldValue,
+  QueryOperator,
+} from "./query-filters";
+export { equal, fieldValue, matches } from "./query-filters";
+export interface SelectOptions {
+  count?: "exact";
+  head?: boolean;
 }
+
 export interface QueryState {
   operation: "select" | "insert" | "upsert" | "update" | "delete";
   groupId?: string;
@@ -24,7 +40,9 @@ export interface QueryState {
   patch?: object;
   predicates: Predicate[];
   authors?: string[];
-  order: { field: string; ascending: boolean }[];
+  order: { field: string; ascending: boolean; nullsFirst?: boolean }[];
+  count?: "exact";
+  head?: boolean;
   limit?: number;
   range?: [number, number];
   allowAll: boolean;
@@ -43,78 +61,9 @@ export interface QueryHost {
     state: QueryState,
   ): Promise<Result<Row<T>[]>>;
 }
-export function fieldValue(row: object, field: string): unknown {
-  if (field.startsWith("_nostr."))
-    return (row as { _nostr?: Record<string, unknown> })._nostr?.[field.slice(7)];
-  return Object.hasOwn(row, field) ? (row as Record<string, unknown>)[field] : undefined;
-}
-export function equal(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (Array.isArray(a) && Array.isArray(b))
-    return a.length === b.length && a.every((value, index) => equal(value, b[index]));
-  if (a && b && typeof a === "object" && typeof b === "object") {
-    const keys = Object.keys(a);
-    return (
-      keys.length === Object.keys(b).length &&
-      keys.every(
-        (key) =>
-          Object.hasOwn(b, key) &&
-          equal((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
-      )
-    );
-  }
-  return false;
-}
-export function matches(row: object, predicates: Predicate[]): boolean {
-  return predicates.every(({ field, op, value }) => {
-    const actual = fieldValue(row, field);
-    switch (op) {
-      case "eq":
-      case "is":
-        return equal(actual, value);
-      case "neq":
-        return !equal(actual, value);
-      case "in":
-        return Array.isArray(value) && value.some((entry) => equal(actual, entry));
-      case "textSearch": {
-        if (typeof actual !== "string" || typeof value !== "string") return false;
-        const normalize = (text: string) =>
-          text.normalize("NFKD").replace(/\p{M}/gu, "").toLocaleLowerCase();
-        const words = normalize(value).trim().split(/\s+/u).filter(Boolean);
-        return words.every((word) => normalize(actual).includes(word));
-      }
-      case "contains":
-        return Array.isArray(actual) && Array.isArray(value)
-          ? value.every((entry) => actual.some((item) => equal(item, entry)))
-          : actual !== null &&
-              value !== null &&
-              typeof actual === "object" &&
-              typeof value === "object" &&
-              Object.keys(value).every(
-                (key) =>
-                  Object.hasOwn(actual, key) &&
-                  equal(
-                    (actual as Record<string, unknown>)[key],
-                    (value as Record<string, unknown>)[key],
-                  ),
-              );
-      case "gt":
-      case "gte":
-      case "lt":
-      case "lte": {
-        if (
-          !(typeof actual === "number" && typeof value === "number") &&
-          !(typeof actual === "string" && typeof value === "string")
-        )
-          return false;
-        if (op === "gt") return actual > value;
-        if (op === "gte") return actual >= value;
-        if (op === "lt") return actual < value;
-        return actual <= value;
-      }
-    }
-    return false;
-  });
+/** Exact count within the supplied verified records, before ordering or page limits. */
+export function countMatches<T extends object>(rows: Row<T>[], state: QueryState): number {
+  return rows.filter((row) => matches(row, state.predicates)).length;
 }
 export function applyQuery<T extends object>(rows: Row<T>[], state: QueryState): Row<T>[] {
   let selected = rows.filter((row) => matches(row, state.predicates));
@@ -122,7 +71,11 @@ export function applyQuery<T extends object>(rows: Row<T>[], state: QueryState):
     for (const order of state.order) {
       const left = fieldValue(a, order.field);
       const right = fieldValue(b, order.field);
-      if (equal(left, right)) continue;
+      if (equal(left, right) || (left == null && right == null)) continue;
+      if (left == null || right == null) {
+        const nullsFirst = order.nullsFirst ?? !order.ascending;
+        return left == null ? (nullsFirst ? -1 : 1) : nullsFirst ? 1 : -1;
+      }
       const comparison =
         left == null
           ? 1
@@ -239,8 +192,31 @@ export class QueryBuilder<T extends object, Selected = Row<T>, C extends Cardina
   }
   select<const Columns extends string = "*">(
     columns?: Columns & Selection<Row<T>, Columns>,
+    options: SelectOptions = {},
   ): QueryBuilder<T, Projection<Row<T>, Columns>, C> {
-    return this.clone({ returning: true }, columns ?? "*");
+    const invalid =
+      !options ||
+      typeof options !== "object" ||
+      Array.isArray(options) ||
+      Object.keys(options).some((key) => key !== "count" && key !== "head") ||
+      (options.count !== undefined && options.count !== "exact") ||
+      (options.head !== undefined && typeof options.head !== "boolean");
+    return this.clone(
+      {
+        returning: true,
+        count: options?.count,
+        head: options?.head,
+        validationError:
+          this.state.validationError ??
+          (invalid
+            ? new NostrbaseError(
+                "INVALID_QUERY",
+                "Select accepts count: exact and a boolean head option.",
+              )
+            : undefined),
+      },
+      columns ?? "*",
+    );
   }
   insert(values: Insert<T> | Insert<T>[]): QueryBuilder<T, Row<T>, "many"> {
     return this.clone(
@@ -270,51 +246,123 @@ export class QueryBuilder<T extends object, Selected = Row<T>, C extends Cardina
   delete(): QueryBuilder<T, Row<T>, "many"> {
     return this.clone({ operation: "delete", returning: false }, "*", "many");
   }
-  private predicate(
-    field: string,
-    op: PredicateOperator,
-    value: unknown,
-  ): QueryBuilder<T, Selected, C> {
-    return this.clone({ predicates: [...this.state.predicates, { field, op, value }] });
+  private addPredicate(build: () => Predicate): QueryBuilder<T, Selected, C> {
+    try {
+      return this.clone({ predicates: [...this.state.predicates, build()] });
+    } catch (error) {
+      return this.clone({
+        validationError: this.state.validationError ?? asError(error, "INVALID_QUERY"),
+      });
+    }
   }
-  eq<K extends keyof Row<T> & string>(field: K, value: Row<T>[K]): QueryBuilder<T, Selected, C> {
+  private predicate(field: string, op: string, value: unknown): QueryBuilder<T, Selected, C> {
+    return this.addPredicate(() => makePredicate(field, op, value));
+  }
+  eq<K extends keyof Row<T> & string>(field: K, value: Row<T>[K]): QueryBuilder<T, Selected, C>;
+  eq<K extends Exclude<QueryField<Row<T>>, keyof Row<T>>>(
+    field: K,
+    value: QueryFieldValue<Row<T>, K>,
+  ): QueryBuilder<T, Selected, C>;
+  eq(field: string, value: unknown): QueryBuilder<T, Selected, C> {
     return this.predicate(field, "eq", value);
   }
-  neq<K extends keyof Row<T> & string>(field: K, value: Row<T>[K]): QueryBuilder<T, Selected, C> {
+  neq<K extends keyof Row<T> & string>(field: K, value: Row<T>[K]): QueryBuilder<T, Selected, C>;
+  neq<K extends Exclude<QueryField<Row<T>>, keyof Row<T>>>(
+    field: K,
+    value: QueryFieldValue<Row<T>, K>,
+  ): QueryBuilder<T, Selected, C>;
+  neq(field: string, value: unknown): QueryBuilder<T, Selected, C> {
     return this.predicate(field, "neq", value);
   }
-  in<K extends keyof Row<T> & string>(
+  in<K extends QueryField<Row<T>>>(
     field: K,
-    values: readonly Row<T>[K][],
+    values: readonly QueryFieldValue<Row<T>, K>[],
   ): QueryBuilder<T, Selected, C> {
     return this.predicate(field, "in", values);
   }
-  gt<K extends keyof Row<T> & string>(field: K, value: Row<T>[K]): QueryBuilder<T, Selected, C> {
+  gt<K extends keyof Row<T> & string>(field: K, value: Row<T>[K]): QueryBuilder<T, Selected, C>;
+  gt<K extends Exclude<QueryField<Row<T>>, keyof Row<T>>>(
+    field: K,
+    value: QueryFieldValue<Row<T>, K>,
+  ): QueryBuilder<T, Selected, C>;
+  gt(field: string, value: unknown): QueryBuilder<T, Selected, C> {
     return this.predicate(field, "gt", value);
   }
-  gte<K extends keyof Row<T> & string>(field: K, value: Row<T>[K]): QueryBuilder<T, Selected, C> {
+  gte<K extends keyof Row<T> & string>(field: K, value: Row<T>[K]): QueryBuilder<T, Selected, C>;
+  gte<K extends Exclude<QueryField<Row<T>>, keyof Row<T>>>(
+    field: K,
+    value: QueryFieldValue<Row<T>, K>,
+  ): QueryBuilder<T, Selected, C>;
+  gte(field: string, value: unknown): QueryBuilder<T, Selected, C> {
     return this.predicate(field, "gte", value);
   }
-  lt<K extends keyof Row<T> & string>(field: K, value: Row<T>[K]): QueryBuilder<T, Selected, C> {
+  lt<K extends keyof Row<T> & string>(field: K, value: Row<T>[K]): QueryBuilder<T, Selected, C>;
+  lt<K extends Exclude<QueryField<Row<T>>, keyof Row<T>>>(
+    field: K,
+    value: QueryFieldValue<Row<T>, K>,
+  ): QueryBuilder<T, Selected, C>;
+  lt(field: string, value: unknown): QueryBuilder<T, Selected, C> {
     return this.predicate(field, "lt", value);
   }
-  lte<K extends keyof Row<T> & string>(field: K, value: Row<T>[K]): QueryBuilder<T, Selected, C> {
+  lte<K extends keyof Row<T> & string>(field: K, value: Row<T>[K]): QueryBuilder<T, Selected, C>;
+  lte<K extends Exclude<QueryField<Row<T>>, keyof Row<T>>>(
+    field: K,
+    value: QueryFieldValue<Row<T>, K>,
+  ): QueryBuilder<T, Selected, C>;
+  lte(field: string, value: unknown): QueryBuilder<T, Selected, C> {
     return this.predicate(field, "lte", value);
   }
-  is<K extends keyof Row<T> & string>(
-    field: K,
-    value: null | boolean,
-  ): QueryBuilder<T, Selected, C> {
+  is<K extends QueryField<Row<T>>>(field: K, value: null | boolean): QueryBuilder<T, Selected, C> {
     return this.predicate(field, "is", value);
   }
-  contains<K extends keyof Row<T> & string>(
+  contains<K extends QueryField<Row<T>>>(
     field: K,
-    value: Partial<Row<T>[K]>,
+    value: DeepPartial<QueryFieldValue<Row<T>, K>>,
   ): QueryBuilder<T, Selected, C> {
     return this.predicate(field, "contains", value);
   }
-  textSearch<K extends keyof T & string>(field: K, query: string): QueryBuilder<T, Selected, C> {
+  containedBy<K extends QueryField<Row<T>>>(
+    field: K,
+    value: DeepPartial<QueryFieldValue<Row<T>, K>>,
+  ): QueryBuilder<T, Selected, C> {
+    return this.predicate(field, "containedBy", value);
+  }
+  overlaps<K extends QueryField<Row<T>>>(
+    field: K,
+    value: FilterValue<QueryFieldValue<Row<T>, K>, "overlaps">,
+  ): QueryBuilder<T, Selected, C> {
+    return this.predicate(field, "overlaps", value);
+  }
+  like<K extends QueryField<Row<T>>>(field: K, pattern: string): QueryBuilder<T, Selected, C> {
+    return this.predicate(field, "like", pattern);
+  }
+  ilike<K extends QueryField<Row<T>>>(field: K, pattern: string): QueryBuilder<T, Selected, C> {
+    return this.predicate(field, "ilike", pattern);
+  }
+  textSearch<K extends QueryField<T>>(field: K, query: string): QueryBuilder<T, Selected, C> {
     return this.predicate(field, "textSearch", query);
+  }
+  filter<K extends QueryField<Row<T>>, O extends FilterOperator>(
+    field: K,
+    op: O,
+    value: FilterValue<QueryFieldValue<Row<T>, K>, O> | string,
+  ): QueryBuilder<T, Selected, C> {
+    return this.addPredicate(() => makeFilterPredicate(field, op, value));
+  }
+  not<K extends QueryField<Row<T>>, O extends FilterOperator>(
+    field: K,
+    op: O,
+    value: FilterValue<QueryFieldValue<Row<T>, K>, O> | string,
+  ): QueryBuilder<T, Selected, C> {
+    return this.addPredicate(() => ({
+      field: "",
+      op: "not",
+      value: makeFilterPredicate(field, op, value),
+    }));
+  }
+  /** PostgREST-style alternatives. Other chained filters remain AND conditions. */
+  or(expression: string): QueryBuilder<T, Selected, C> {
+    return this.addPredicate(() => parseOr(expression));
   }
   /** Read only from the local verified cache; no relay request is made. */
   local(): QueryBuilder<T, Selected, C> {
@@ -346,12 +394,18 @@ export class QueryBuilder<T extends object, Selected = Row<T>, C extends Cardina
     return this.clone({ page: { size, cursor: options.cursor }, validationError: error });
   }
   match(values: Partial<Row<T>>): QueryBuilder<T, Selected, C> {
-    return this.clone({
-      predicates: [
-        ...this.state.predicates,
-        ...Object.entries(values).map(([field, value]) => ({ field, op: "eq" as const, value })),
-      ],
-    });
+    try {
+      if (!values || typeof values !== "object" || Array.isArray(values))
+        throw new NostrbaseError("INVALID_QUERY", "Match requires a field-value object.");
+      const predicates = Object.entries(snapshotValue(values) as Record<string, unknown>).map(
+        ([field, value]) => makePredicate(field, "eq", value),
+      );
+      return this.clone({ predicates: [...this.state.predicates, ...predicates] });
+    } catch (error) {
+      return this.clone({
+        validationError: this.state.validationError ?? asError(error, "INVALID_QUERY"),
+      });
+    }
   }
   author(pubkey: string | readonly string[]): QueryBuilder<T, Selected, C> {
     const authors = typeof pubkey === "string" ? [pubkey] : [...pubkey];
@@ -362,12 +416,38 @@ export class QueryBuilder<T extends object, Selected = Row<T>, C extends Cardina
     return this.clone({ authors, validationError });
   }
   order(
-    field: keyof Row<T> & string,
-    options: { ascending?: boolean } = {},
+    field: QueryField<Row<T>>,
+    options: { ascending?: boolean; nullsFirst?: boolean } = {},
   ): QueryBuilder<T, Selected, C> {
-    return this.clone({
-      order: [...this.state.order, { field, ascending: options.ascending ?? true }],
-    });
+    try {
+      fieldPath(field);
+      if (
+        !options ||
+        typeof options !== "object" ||
+        Array.isArray(options) ||
+        Object.keys(options).some((key) => key !== "ascending" && key !== "nullsFirst") ||
+        (options.ascending !== undefined && typeof options.ascending !== "boolean") ||
+        (options.nullsFirst !== undefined && typeof options.nullsFirst !== "boolean")
+      )
+        throw new NostrbaseError(
+          "INVALID_QUERY",
+          "Order direction and nullsFirst must be booleans.",
+        );
+      return this.clone({
+        order: [
+          ...this.state.order,
+          {
+            field,
+            ascending: options.ascending ?? true,
+            ...(options.nullsFirst !== undefined ? { nullsFirst: options.nullsFirst } : {}),
+          },
+        ],
+      });
+    } catch (error) {
+      return this.clone({
+        validationError: this.state.validationError ?? asError(error, "INVALID_QUERY"),
+      });
+    }
   }
   limit(count: number): QueryBuilder<T, Selected, C> {
     return this.clone({
@@ -406,6 +486,11 @@ export class QueryBuilder<T extends object, Selected = Row<T>, C extends Cardina
   private async run(): Promise<Result<QueryData<Selected, C>>> {
     try {
       if (this.state.validationError) throw this.state.validationError;
+      if (this.state.head && (this.state.operation !== "select" || this.cardinality !== "many"))
+        throw new NostrbaseError(
+          "INVALID_QUERY",
+          "Head reads require a select query with many-row cardinality.",
+        );
       if (this.state.page && (this.state.order.length || this.state.range))
         throw new NostrbaseError(
           "INVALID_QUERY",

@@ -39,3 +39,10 @@ The example uses Node's built-in WebSocket. Set `NOSTR_PRIVATE_KEY` to a hex or 
 For browser persistence, replace the memory adapter with `new IndexedDBPersistenceAdapter("my-app-cache")`. For files, use `db.storage.from("https://your-blossom-server.example")`; see [private records and storage](../docs/private-storage.md). Keep a stable production identity supplied by the user.
 
 The original SDK tests use local WebSocket relays on random ports, a simulated IndexedDB implementation, and a simulated Blossom HTTP service. They need no external service. The [verification record](../docs/verification.md) identifies the limits of those checks.
+
+## Recovery, queries, replay, and images
+
+- [Key backup](key-backup.ts): export an encrypted key and restore the identity.
+- [Queries](queries.ts): logical, JSON, collection, pattern, and count queries.
+- [Automatic replay](automatic-replay.ts): opt-in retry configuration and result inspection.
+- [Images](images.ts): Node resize/conversion before Blossom upload. Install the optional `sharp` peer.

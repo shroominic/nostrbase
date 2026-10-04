@@ -15,7 +15,7 @@ import {
   verify,
 } from "./protocol";
 import type { QueryHost, QueryState } from "./query";
-import { applyQuery, nextCursor, parseCursor, QueryBuilder } from "./query";
+import { applyQuery, countMatches, nextCursor, parseCursor, QueryBuilder } from "./query";
 import type {
   ChangePayload,
   Filter,
@@ -140,7 +140,8 @@ export class NostrbasePrivateTables<DB extends SchemaShape<DB>> implements Query
     const cursor = parseCursor(state.page?.cursor);
     if (cursor && (cursor.namespace !== this.host.namespace || cursor.table !== table))
       throw new NostrbaseError("INVALID_QUERY", "Cursor belongs to another table or namespace.");
-    const relayFilter = cursor ? { ...filter, until: cursor.timestamp } : filter;
+    const relayFilter =
+      cursor && state.count !== "exact" ? { ...filter, until: cursor.timestamp } : filter;
     const relays: ResultMeta["relays"] = [];
     if (!state.queue && !state.local) {
       const response = await this.host.request(
@@ -219,9 +220,9 @@ export class NostrbasePrivateTables<DB extends SchemaShape<DB>> implements Query
         const result = await this.read<T>(table, state, pubkey);
         const rows = applyQuery(result.rows, state);
         return {
-          data: rows,
+          data: state.head ? [] : rows,
           error: null,
-          count: rows.length,
+          count: state.count === "exact" ? countMatches(result.rows, state) : rows.length,
           meta: { ...result.meta, nextCursor: nextCursor(this.host.namespace, table, rows, state) },
         };
       }

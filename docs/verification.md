@@ -4,6 +4,34 @@ Date: 4 October 2026, Asia/Bangkok.
 
 Version 0.2.0 and the current test expansion were checked locally. Public service checks use a generated development identity. Hosted GitHub workflows and npm publication have not been run.
 
+## Key recovery, richer queries, automatic replay, and images
+
+This change starts from clean `main` commit `06e7e1c` in the managed worktree on `feature/recovery-queries-replay-images`. It adds NIP-49 encrypted identity backup, client query filters/counts, opt-in automatic delivery of saved writes, and local image transforms. Record encoding is unchanged. See [key backup](key-backup.md), [queries](queries.md), [automatic replay](automatic-replay.md), and [images](images.md).
+
+Independent review found and fixed image cover allocation and alpha handling, replay observer re-entry, group admission during recovery, and group replay after failed signer replacement. Permanent regressions cover these boundaries. Reviewers approved the final changes. This is implementation review, not a cryptographic audit.
+
+| Check on 4 October 2026 | Result |
+| --- | --- |
+| `CI=true npm run check-ci` on Node 26.3.0, npm 11.16.0 | Passed: formatting, lint, types, 430 SDK tests in 33 files, ESM/declarations, documentation, secrets, four workflows, six baseline tests, and 8/8 deliberate faults |
+| Full fast SDK suite on Node 22.12.0 | Passed: all 430 tests, including packed declarations, runtime, and browser bundle |
+| Documentation | Passed: 89 generated pages; 120 local and 8 external exports; 80 guide snippets and four complete quickstarts; zero compiler errors or warnings |
+| Independent service and fault projects | Passed: 38 relay, Blossom, remote signer, network fault, crash recovery, and bounded load checks |
+| Browser aggregate | Passed: 43 checks in Chromium, Firefox, and WebKit, including identity recovery, durable automatic replay, real image pixels, and Chromium quota rejection |
+| Actual nos2x extension | Passed: five permission, signing, encryption, and failure checks |
+| Fieldwork packaged application | Passed: 33 flows across three engines; independent NIP-77 query fallback check also passes |
+| Fresh npm-installed archive consumer | Passed on Node 22.12.0 and 26.3.0: strict types, all four features, real Sharp pixels, patched group engine, and browser bundle without Sharp |
+| Four npm dependency audits | Zero reported advisories |
+
+The initial CI run stopped because automatic replay added a committed-work notification between the deliberate-fault script's source markers. The mutation target now preserves that notification while moving optimistic ingestion before durable commit. Its named regression detects this fault, and all eight fault checks pass. Workspace source is unchanged by the fault runner.
+
+Browser tests recover the same signing identity after a page reload. A wrong password retains the current account. Real IndexedDB replay keeps rejected writes and later sends their exact saved signatures, then persists queue removal. Image tests inspect orientation, crop, alpha, JPEG background, actual upload hashes, and verified downloads. The Node cover regression uses a wide-to-tall input whose naive resize intermediate would exceed 500 megapixels.
+
+The fresh consumer installs an immutable archive and registry dependencies in an empty npm app with no source links. It separately installs optional Sharp. Its unminified browser module bundle is about 2.35 MB and excludes the Node image entry and Sharp. This checks module resolution, not load performance. Guarded optional crypto/HPKE/PQ imports inherited from Marmot remain in that bundle. Node 22.12 emits experimental Ed25519/X25519 notices. Strict npm reports the bundled engine's upstream prepare entry as unapproved; its shipped compiled runtime installs and runs without that script.
+
+Key backup restores a local Nostr identity, not lost MLS device state. External signer keys stay with their signer. Query counts cover the finite verified rows available to that read. Automatic replay has no shared multi-tab/device lock or exactly-once delivery guarantee. Local image transforms require the original download and do not supply CDN transformations. Relay acknowledgements do not establish global or permanent storage. No public deployment writes, hosted CI runs, or registry publication were part of this change.
+
+Logs remain under `output/features-*.log` in the managed worktree. The fresh consumer and report remain at `/private/tmp/nostrbase-packed-consumer-9kBjeF`.
+
 ## Supabase-style group API
 
 This change starts from clean `main` commit `c8eac82` in the managed worktree on `feature/supabase-group-api`. Group management now returns `{ data, error }`, and table queries use `db.from("tasks").inGroup(groupId)`. The `.inGroup()` method is a Nostrbase extension. Record wire encoding is unchanged. See [groups](groups.md) for examples, return types, cancellation, recovery, and migration from the earlier API.

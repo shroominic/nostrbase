@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import ts from "typescript";
@@ -24,6 +24,11 @@ try {
     "offline-sync.md",
     "private-storage.md",
     "tooling.md",
+    "groups.md",
+    "key-backup.md",
+    "queries.md",
+    "automatic-replay.md",
+    "images.md",
   ])
     sources.push({
       file: `docs/${file}`,
@@ -76,6 +81,7 @@ try {
     typeRoots: [resolve(root, "node_modules/@types"), resolve(root, "site/node_modules/@types")],
     paths: {
       nostrbase: [resolve(root, "dist/index.d.ts")],
+      "nostrbase/node": [resolve(root, "dist/node.d.ts")],
       react: [resolve(root, "site/node_modules/@types/react/index.d.ts")],
       "react/jsx-runtime": [resolve(root, "site/node_modules/@types/react/jsx-runtime.d.ts")],
     },

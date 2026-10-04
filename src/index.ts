@@ -2,6 +2,7 @@ export { EventStore } from "applesauce-core";
 export { RelayPool } from "applesauce-relay";
 export { ExtensionSigner, NostrConnectSigner, PrivateKeySigner } from "applesauce-signers";
 export { NostrbaseAuth } from "./auth";
+export type { AutoReplayOptions, AutoReplayStatus } from "./auto-replay";
 export type { Backup, BackupImport } from "./backup";
 export { belongsToNamespace, NostrbaseBackup } from "./backup";
 export type {
@@ -31,6 +32,15 @@ export type {
   PrivateGroupInvite,
 } from "./groups";
 export { NostrbaseGroup, NostrbaseGroups } from "./groups";
+export type {
+  ImageFormat,
+  ImageProcessingOptions,
+  ImageProcessor,
+  ImageTransformOptions,
+} from "./image";
+export { CanvasImageProcessor } from "./image";
+export type { KeyDecryptionOptions, KeyEncryptionOptions } from "./key-backup";
+export { decryptKey, encryptKey } from "./key-backup";
 export type { MigrationOptions, MigrationResult } from "./migrations";
 export { NostrbaseMigrations } from "./migrations";
 export type { OfflineOptions, QueuedWriteReceipt } from "./offline";
@@ -43,6 +53,15 @@ export {
 } from "./persistence";
 export { NostrbasePrivateTables } from "./private";
 export { PROTOCOL_VERSION, RECORD_KIND, recordIdentifier, scopeTag } from "./protocol";
+export type {
+  DeepPartial,
+  FilterOperator,
+  FilterValue,
+  QueryField,
+  QueryFieldValue,
+  QueryOperator,
+  SelectOptions,
+} from "./query";
 export { QueryBuilder } from "./query";
 export type { RecordReference } from "./relations";
 export { NostrbaseRelations, reference } from "./relations";
@@ -55,6 +74,7 @@ export type {
   StorageListOptions,
   StorageOptions,
   StorageRequestOptions,
+  StorageUploadOptions,
   StoredBlob,
 } from "./storage";
 export { NostrbaseStorage } from "./storage";

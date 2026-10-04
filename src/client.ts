@@ -28,7 +28,7 @@ import {
   verify,
 } from "./protocol";
 import type { QueryHost, QueryState } from "./query";
-import { applyQuery, nextCursor, parseCursor, QueryBuilder } from "./query";
+import { applyQuery, countMatches, nextCursor, parseCursor, QueryBuilder } from "./query";
 import { NostrbaseRelations } from "./relations";
 import { NostrbaseStorage } from "./storage";
 import { NostrbaseSync } from "./sync";
@@ -174,6 +174,36 @@ export class NostrbaseClient<DB extends SchemaShape<DB> = DefaultSchema> impleme
     this.migrations = new NostrbaseMigrations(this);
     this.dashboard = new NostrbaseDashboard(this);
     this.events = new NostrbaseEvents(this);
+    this.offline.attachAutoReplay(
+      {
+        auth: this.auth,
+        ready: () => this.ready(),
+        signal: (signal) => this.signal(signal),
+        pending: async (pubkey) =>
+          (await this.offline.hasPending(pubkey)) || this.groups.hasReplayPending(),
+        flush: (signal) => this.replayQueues(signal),
+        watchReconnect: (wake) => {
+          const subscriptions = new Subscription();
+          if (this.transport instanceof ApplesauceTransport) {
+            const pool = this.transport.pool;
+            const watchReplay = (relay: ReturnType<RelayPool["relay"]>) => {
+              if (!this.relays.includes(new URL(relay.url).toString())) return;
+              let previous = false;
+              subscriptions.add(
+                relay.connected$.subscribe((connected) => {
+                  if (connected && !previous) wake();
+                  previous = connected;
+                }),
+              );
+            };
+            for (const relay of pool.relays.values()) watchReplay(relay);
+            subscriptions.add(pool.add$.subscribe(watchReplay));
+          }
+          return () => subscriptions.unsubscribe();
+        },
+      },
+      options.offline?.autoReplay,
+    );
     if (options.sync) this.sync.start();
     void this.ready().catch(() => this.diagnostics.record("error", "hydrate"));
   }
@@ -182,6 +212,30 @@ export class NostrbaseClient<DB extends SchemaShape<DB> = DefaultSchema> impleme
     await this.persistence?.ready();
     await this.offline.ready();
     this.assertOpen();
+  }
+  private async replayQueues(signal: AbortSignal): Promise<Result<WriteReceipt[]>> {
+    const publicResult = await this.offline.flush({ signal });
+    const receipts = [...(publicResult.data ?? [])];
+    let failure = publicResult.error;
+    try {
+      if (!signal.aborted && (await this.groups.hasReplayPending())) {
+        const groupResult = await this.groups.replayQueued({ signal });
+        receipts.push(...(groupResult.data ?? []));
+        failure ??= groupResult.error;
+      }
+    } catch (error) {
+      failure ??= asError(error);
+    }
+    return {
+      data: receipts,
+      error: failure,
+      count: receipts.length,
+      meta: {
+        relays: receipts.flatMap((receipt) => receipt.relays),
+        receipts,
+        partial: !!failure || receipts.some((receipt) => receipt.relays.some((relay) => !relay.ok)),
+      },
+    };
   }
   nextTimestamp(address: string): number {
     return Math.max(Math.floor(Date.now() / 1000), (this.timestamps.get(address) ?? -1) + 1);
@@ -309,7 +363,7 @@ export class NostrbaseClient<DB extends SchemaShape<DB> = DefaultSchema> impleme
     if (cursor) {
       if (cursor.namespace !== this.namespace || cursor.table !== table)
         throw new NostrbaseError("INVALID_QUERY", "Cursor belongs to another table or namespace.");
-      filter.until = cursor.timestamp;
+      if (state.count !== "exact") filter.until = cursor.timestamp;
     }
     if (authors) filter.authors = authors;
     const idPredicate = state.predicates.find(
@@ -480,9 +534,9 @@ export class NostrbaseClient<DB extends SchemaShape<DB> = DefaultSchema> impleme
         const result = await this.readTable<T>(table, state);
         const rows = applyQuery(result.rows, state);
         return {
-          data: rows,
+          data: state.head ? [] : rows,
           error: null,
-          count: rows.length,
+          count: state.count === "exact" ? countMatches(result.rows, state) : rows.length,
           meta: { ...result.meta, nextCursor: nextCursor(this.namespace, table, rows, state) },
         };
       }
@@ -690,6 +744,7 @@ export class NostrbaseClient<DB extends SchemaShape<DB> = DefaultSchema> impleme
   }
   close(): void {
     if (this.controller.signal.aborted) return;
+    this.offline.stopAutoReplay();
     this.controller.abort();
     this.observers.unsubscribe();
     this.sync.close();

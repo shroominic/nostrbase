@@ -26,6 +26,13 @@ Open `http://127.0.0.1:4321`. Build static HTML with `npm run docs:build`; previ
 
 ## Edit documentation
 
-Edit guide Markdown in `docs/`; the site copies it during preparation. `site/src/catalog.json` controls navigation and section extraction. API pages are generated from `dist/index.d.ts` and source module ownership during the site build. Rebuild the SDK before generating a reference. The dev server watches Markdown, navigation, and built declarations.
+Edit guide Markdown in `docs/`; the site copies it during preparation. `site/src/catalog.json` controls navigation and section extraction. API pages are generated from the browser, Node, and shared declarations in `dist/` and source module ownership during the site build. Rebuild the SDK before generating a reference. The dev server watches Markdown, navigation, and built declarations.
 
 `npm run docs:build` checks examples and Astro/TypeScript, verifies every local link and fragment, and emits searchable HTML, per-page Markdown, `llms.txt`, and `llms-full.txt`. Code examples use placeholder relay/server URLs; replace them before running.
+
+## Additional feature guides
+
+- [Key backup and recovery](key-backup.md)
+- [Richer queries](queries.md)
+- [Automatic queue replay](automatic-replay.md)
+- [Image processing](images.md)

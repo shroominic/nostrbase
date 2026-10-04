@@ -44,7 +44,7 @@ import {
   verify,
 } from "./protocol";
 import type { QueryHost, QueryState } from "./query";
-import { applyQuery, nextCursor, parseCursor, QueryBuilder } from "./query";
+import { applyQuery, countMatches, nextCursor, parseCursor, QueryBuilder } from "./query";
 import type {
   ChangePayload,
   DefaultSchema,
@@ -60,6 +60,10 @@ import type {
 const hex = (bytes: Uint8Array): string =>
   Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
 const randomId = (): string => hex(crypto.getRandomValues(new Uint8Array(32)));
+// Recovery owns the manager lock. Its new handles must complete ingress without
+// reacquiring that lock. This callback is private to this module and call site.
+const recoveredIngress = new WeakMap<object, () => Promise<void>>();
+const completeGroupJoin = new WeakMap<object, () => Promise<Result<WriteReceipt[]>>>();
 /** Encrypted device-local storage. Reuse the device id and adapter across restarts. */
 export interface GroupsOptions {
   deviceId?: string;
@@ -125,6 +129,8 @@ export class NostrbaseGroups<DB extends SchemaShape<DB> = DefaultSchema> {
   private initialization?: Promise<GroupContext<DB>>;
   private closed = false;
   private closing?: Promise<void>;
+  private recoveryLock: Promise<unknown> = Promise.resolve();
+  private recoverySignal?: AbortSignal;
   private authSubscription: { unsubscribe(): void };
   constructor(
     readonly host: NostrbaseClient<DB>,
@@ -166,6 +172,9 @@ export class NostrbaseGroups<DB extends SchemaShape<DB> = DefaultSchema> {
   private async runtime(): Promise<GroupContext<DB>> {
     this.host.assertOpen();
     if (this.closed) throw new NostrbaseError("CLIENT_CLOSED", "Group manager is closed.");
+    if (!this.host.auth.revisionSettled)
+      throw new NostrbaseError("AUTH_FAILED", "Wait for the current sign-in attempt to finish.");
+    if (this.context && this.context.revision !== this.host.auth.revision) this.disposeContext();
     if (this.context) {
       await this.context.guard();
       return this.context;
@@ -251,7 +260,13 @@ export class NostrbaseGroups<DB extends SchemaShape<DB> = DefaultSchema> {
         timeout: this.host.timeout,
         minWriteAcks: this.host.minWriteAcks,
         guard,
-        signal: (signal) => this.host.signal(signal),
+        signal: (signal) =>
+          this.host.signal(
+            AbortSignal.any([
+              ...(signal ? [signal] : []),
+              ...(this.recoverySignal ? [this.recoverySignal] : []),
+            ]),
+          ),
         publicationSignal: (event) => publicationSignals.get(event.id),
         afterPublish: async (event, response) => {
           const receipt = network.receipt(event.id);
@@ -313,6 +328,7 @@ export class NostrbaseGroups<DB extends SchemaShape<DB> = DefaultSchema> {
         };
       },
       prepared: async (record) => {
+        this.host.offline.notifyReplayWork();
         if (!record.application) return;
         const signal = pendingSignals.get(record.groupId);
         if (signal) publicationSignals.set(record.envelope.id, signal);
@@ -399,10 +415,13 @@ export class NostrbaseGroups<DB extends SchemaShape<DB> = DefaultSchema> {
         context.handles.set(group.idStr, result);
       }
     }
-    await result.ready();
+    await recoveredIngress.get(result)?.();
     return result;
   }
-  async create(options: CreatePrivateGroupOptions): Promise<Result<NostrbaseGroup<DB>>> {
+  create(options: CreatePrivateGroupOptions): Promise<Result<NostrbaseGroup<DB>>> {
+    return this.runExclusive(() => this.createNow(options));
+  }
+  private async createNow(options: CreatePrivateGroupOptions): Promise<Result<NostrbaseGroup<DB>>> {
     try {
       if (
         !options ||
@@ -426,7 +445,10 @@ export class NostrbaseGroups<DB extends SchemaShape<DB> = DefaultSchema> {
       return { data: null, error: groupError(error) };
     }
   }
-  async get(id: string): Promise<Result<NostrbaseGroup<DB>>> {
+  get(id: string): Promise<Result<NostrbaseGroup<DB>>> {
+    return this.runExclusive(() => this.getNow(id));
+  }
+  private async getNow(id: string): Promise<Result<NostrbaseGroup<DB>>> {
     try {
       if (typeof id !== "string" || !/^[0-9a-f]{64}$/.test(id))
         throw new NostrbaseError("INVALID_QUERY", "Group id must be full hex.");
@@ -440,7 +462,10 @@ export class NostrbaseGroups<DB extends SchemaShape<DB> = DefaultSchema> {
       return { data: null, error: groupError(error) };
     }
   }
-  async list(): Promise<Result<PrivateGroupInfo[]>> {
+  list(): Promise<Result<PrivateGroupInfo[]>> {
+    return this.runExclusive(() => this.listNow());
+  }
+  private async listNow(): Promise<Result<PrivateGroupInfo[]>> {
     const output: PrivateGroupInfo[] = [];
     try {
       const context = await this.runtime();
@@ -453,7 +478,10 @@ export class NostrbaseGroups<DB extends SchemaShape<DB> = DefaultSchema> {
     }
   }
   /** Publish the public device KeyPackage and discovery lists on configured relays. */
-  async publishKeyPackage(): Promise<Result<WriteReceipt[]>> {
+  publishKeyPackage(): Promise<Result<WriteReceipt[]>> {
+    return this.runExclusive(() => this.publishKeyPackageNow());
+  }
+  private async publishKeyPackageNow(): Promise<Result<WriteReceipt[]>> {
     const receipts: WriteReceipt[] = [];
     try {
       const context = await this.runtime();
@@ -488,7 +516,10 @@ export class NostrbaseGroups<DB extends SchemaShape<DB> = DefaultSchema> {
       return receiptList(receipts, groupError(error));
     }
   }
-  async invites(): Promise<Result<PrivateGroupInvite[]>> {
+  invites(): Promise<Result<PrivateGroupInvite[]>> {
+    return this.runExclusive(() => this.invitesNow());
+  }
+  private async invitesNow(): Promise<Result<PrivateGroupInvite[]>> {
     try {
       const context = await this.runtime();
       const events = await context.network.request(this.host.relays, {
@@ -515,7 +546,10 @@ export class NostrbaseGroups<DB extends SchemaShape<DB> = DefaultSchema> {
       return { data: null, error: groupError(error) };
     }
   }
-  async join(inviteId: string): Promise<Result<NostrbaseGroup<DB>>> {
+  join(inviteId: string): Promise<Result<NostrbaseGroup<DB>>> {
+    return this.runExclusive(() => this.joinNow(inviteId));
+  }
+  private async joinNow(inviteId: string): Promise<Result<NostrbaseGroup<DB>>> {
     let handle: NostrbaseGroup<DB> | null = null;
     let context: GroupContext<DB> | undefined;
     const receipts: WriteReceipt[] = [];
@@ -539,10 +573,10 @@ export class NostrbaseGroups<DB extends SchemaShape<DB> = DefaultSchema> {
       const { group } = await context.engine.joinGroupFromWelcome({ welcomeRumor: invite });
       handle = await this.handle(context, group);
       await context.engine.invites.markAsRead(inviteId);
-      const sync = await handle.sync();
-      if (sync.error) throw sync.error;
-      // Marmot requires a leaf update after accepting a Welcome.
-      const update = await handle.rotate();
+      // This new handle is still inside manager admission. It has no public caller.
+      const complete = completeGroupJoin.get(handle);
+      if (!complete) throw new NostrbaseError("INVALID_RECORD", "Group join is unavailable.");
+      const update = await complete();
       receipts.push(...(update.data ?? []));
       if (update.error) throw update.error;
       await context.guard();
@@ -577,9 +611,24 @@ export class NostrbaseGroups<DB extends SchemaShape<DB> = DefaultSchema> {
     }
   }
   /** Retry exact envelopes and outstanding Welcomes; no new ciphertext is made. */
-  async flush(): Promise<Result<WriteReceipt[]>> {
+  async flush(options: { signal?: AbortSignal } = {}): Promise<Result<WriteReceipt[]>> {
+    return this.runExclusive(() => this.flushNow(options));
+  }
+  /** @internal Serialize SDK mutations with device recovery. */
+  runExclusive<T>(callback: () => Promise<T>): Promise<T> {
+    const operation = this.recoveryLock.then(callback);
+    this.recoveryLock = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    return operation;
+  }
+  private async flushNow(options: { signal?: AbortSignal }): Promise<Result<WriteReceipt[]>> {
     const receipts: WriteReceipt[] = [];
     try {
+      const signal = this.host.signal(options.signal);
+      if (signal.aborted) throw new NostrbaseError("ABORTED", "Group replay was aborted.");
+      this.recoverySignal = signal;
       const context = await this.runtime();
       const welcomeStart = context.welcomeAttempts.length;
       const all = await context.durability.list();
@@ -618,6 +667,64 @@ export class NostrbaseGroups<DB extends SchemaShape<DB> = DefaultSchema> {
       return receiptList(receipts, failure);
     } catch (error) {
       receipts.push(...failureReceipts(error));
+      return receiptList(receipts, groupError(error));
+    } finally {
+      this.recoverySignal = undefined;
+    }
+  }
+  /** Inspect only this account/device's durable obligations before loading Marmot. */
+  hasReplayPending(): Promise<boolean> {
+    return this.runExclusive(() => this.hasReplayPendingNow());
+  }
+  private async hasReplayPendingNow(): Promise<boolean> {
+    const session = await this.host.auth.getSession();
+    if (!session.data || session.error) return false;
+    if (!this.context) {
+      const prefix = `nostrbase-group:v1:${[this.host.namespace, session.data.user.pubkey, this.deviceId].map(encodeURIComponent).join(":")}:`;
+      const keys = await this.adapter.keys();
+      if (
+        !keys.some((key) =>
+          ["intents", "outbox", "publications"].some((bucket) =>
+            key.startsWith(`${prefix}${bucket}:`),
+          ),
+        )
+      )
+        return false;
+      return true;
+    }
+    const context = await this.runtime();
+    return (
+      (await context.intents.keys()).length > 0 ||
+      (await context.network.listPending()).length > 0 ||
+      (await context.durability.list()).some((record) => record.status !== "applied") ||
+      (await context.durability.pendingWelcomes()).length > 0
+    );
+  }
+  /** Automatic replay reloads handles after recovering exact publication obligations. */
+  async replayQueued(options: { signal?: AbortSignal } = {}): Promise<Result<WriteReceipt[]>> {
+    const receipts: WriteReceipt[] = [];
+    try {
+      const recovered = await this.flush(options);
+      receipts.push(...(recovered.data ?? []));
+      if (recovered.error) return receiptList(receipts, recovered.error);
+      const context = await this.runtime();
+      const ids = new Set<string>();
+      for (const key of await context.intents.keys()) {
+        const intent = await context.intents.getItem(key);
+        if (intent) ids.add(intent.groupId);
+      }
+      for (const id of ids) {
+        if (this.host.signal(options.signal).aborted)
+          throw new NostrbaseError("ABORTED", "Group replay was aborted.");
+        const opened = await this.get(id);
+        if (opened.error || !opened.data)
+          throw opened.error ?? new NostrbaseError("NOT_FOUND", "Queued group is unavailable.");
+        const result = await opened.data.flush(options);
+        receipts.push(...(result.data ?? []));
+        if (result.error) return receiptList(receipts, result.error);
+      }
+      return receiptList(receipts);
+    } catch (error) {
       return receiptList(receipts, groupError(error));
     }
   }
@@ -699,6 +806,15 @@ export class NostrbaseGroup<DB extends SchemaShape<DB> = DefaultSchema> implemen
     private journal: GroupRecordJournal,
   ) {
     this.id = group.idStr;
+    recoveredIngress.set(this, () => this.finalizeIngress());
+    completeGroupJoin.set(this, async () => {
+      await this.pull();
+      this.active();
+      // Marmot requires a leaf update after accepting a Welcome.
+      return this.publications(
+        await this.context.engine.groups.send(this.id, { kind: "selfUpdate" }),
+      );
+    });
     const delivery = group.runtime.welcomeDelivery;
     delivery.deliver = async (options) => {
       await this.guard();
@@ -807,10 +923,12 @@ export class NostrbaseGroup<DB extends SchemaShape<DB> = DefaultSchema> implemen
     return new QueryBuilder<DB[K]>(this, table);
   }
   private serial<T>(callback: () => Promise<T>): Promise<T> {
-    const result = this.lock.then(async () => {
-      await this.guard();
-      return callback();
-    });
+    const result = this.lock.then(() =>
+      this.host.groups.runExclusive(async () => {
+        await this.guard();
+        return callback();
+      }),
+    );
     this.lock = result.then(
       () => undefined,
       () => undefined,
@@ -1189,16 +1307,14 @@ export class NostrbaseGroup<DB extends SchemaShape<DB> = DefaultSchema> implemen
         if (this.host.signal(state.signal).aborted)
           throw new NostrbaseError("ABORTED", "Group operation was aborted.");
         if (state.operation === "select") {
-          const rows = applyQuery(
-            this.journal
-              .rows<T>(table, this.tags())
-              .filter((row) => !state.authors || state.authors.includes(row._nostr.pubkey)),
-            state,
-          );
+          const candidates = this.journal
+            .rows<T>(table, this.tags())
+            .filter((row) => !state.authors || state.authors.includes(row._nostr.pubkey));
+          const rows = applyQuery(candidates, state);
           return {
-            data: rows,
+            data: state.head ? [] : rows,
             error: null,
-            count: rows.length,
+            count: state.count === "exact" ? countMatches(candidates, state) : rows.length,
             meta: {
               relays: [],
               partial: false,
@@ -1387,6 +1503,7 @@ export class NostrbaseGroup<DB extends SchemaShape<DB> = DefaultSchema> implemen
           createdAt: Date.now(),
         };
         await this.context.intents.setItem(rumor.id, intent);
+        this.host.offline.notifyReplayWork();
         if (state.queue) {
           receipts.push({ id: write.id, eventId: proof.id, relays: [], queued: true });
         } else {
@@ -1442,11 +1559,15 @@ export class NostrbaseGroup<DB extends SchemaShape<DB> = DefaultSchema> implemen
     }
   }
   /** Catch up membership, then encrypt queued signed record intents for the current epoch. */
-  async flush(): Promise<Result<WriteReceipt[]>> {
+  async flush(options: { signal?: AbortSignal } = {}): Promise<Result<WriteReceipt[]>> {
     const receipts: WriteReceipt[] = [];
     try {
       return await this.serial(async () => {
-        await this.pull();
+        if (this.host.signal(options.signal).aborted)
+          throw new NostrbaseError("ABORTED", "Group replay was aborted.");
+        await this.pull(options.signal);
+        if (this.host.signal(options.signal).aborted)
+          throw new NostrbaseError("ABORTED", "Group replay was aborted.");
         this.active();
         for (const key of await this.context.intents.keys()) {
           const intent = await this.context.intents.getItem(key);
@@ -1458,7 +1579,7 @@ export class NostrbaseGroup<DB extends SchemaShape<DB> = DefaultSchema> implemen
             );
           if (!verify(intent.proof) || intent.proof.pubkey !== this.context.account)
             throw new NostrbaseError("INVALID_RECORD", "Queued group record signature is invalid.");
-          const result = await this.sendRumor(intent.rumor);
+          const result = await this.sendRumor(intent.rumor, options.signal);
           receipts.push(...(result.data ?? []).map((value) => ({ ...value, id: intent.recordId })));
           if (result.error) throw result.error;
         }

@@ -96,6 +96,8 @@ await db.private.from("notes").insert({ text: "Only for me" });
 await db.closeAsync(); // Finish pending cache writes before closing.
 ```
 
+Set `offline: { autoReplay: true }` to replay the active account's public, personal, and group queues after startup, enqueue, reconnect, or browser online events. Failed delivery retries with bounded delays. Manual replay remains available. See [automatic replay](docs/automatic-replay.md) for cancellation, receipts, and device limits.
+
 Private tables encrypt the record body to the user's own key with NIP-44. The signer must support NIP-44. Relays still see the author, app, table, record ID, and timestamps. Public and private tables use separate addresses.
 
 **Your app needs no separate application server for these record operations.** Relays provide storage and delivery. Files use a separate Blossom HTTP server. Authors edit their own records; application rules run in the client.
@@ -131,15 +133,16 @@ The SDK provides the familiar client API and the following Nostr equivalents. Th
 | TypeScript client | ✅ | `createClient`, typed tables, `{ data, error }` results |
 | Insert, read, update, delete | ✅ | Records stored as signed Nostr events |
 | Upsert | ✅ | Creates or replaces an author's record |
-| Filters and field selection | ✅ | Common filters and typed projections |
+| Filters and field selection | ✅ | Logical OR/NOT, patterns, nested JSON, collection filters, null ordering, typed projections, and local counts |
 | Sorting and pagination | ✅, with limits | Local sorting/ranges and newest-first cursor pages; relay results can be incomplete |
 | Authentication | Partial | Extension, private key, or Applesauce remote signer |
+| Key backup and recovery | ✅, local keys | Password-encrypted NIP-49 `ncryptsec`; extension/remote key export remains with its signer |
 | Live database changes | ✅ | `INSERT`, `UPDATE`, `DELETE` subscriptions |
 | Realtime Broadcast | ✅ | Signed public ephemeral channel messages |
 | Realtime Presence | ✅ | Public session state, heartbeats, and expiry; approximate |
 | Reconnect recovery | ✅ | Public/personal records use Negentropy with query fallback; group sync uses ordinary queries |
 | File storage and uploads | ✅, external service | Blossom upload, download, list, and delete with hash checks |
-| Image transformations | ❌ | Not implemented |
+| Image transformations | ✅, local | Browser Canvas or optional Node Sharp adapter; resize, crop, rotate, mirror, and raster conversion |
 | Edge Functions / RPC | ❌ | Not implemented |
 | PostgreSQL and SQL | ❌ | Uses Nostr events |
 | Joins and foreign keys | Partial | Author-scoped references resolved on the client; no enforced foreign keys or SQL joins |
@@ -154,7 +157,7 @@ The SDK provides the familiar client API and the following Nostr equivalents. Th
 | Data migrations | ✅, client-side | Validate transformations, preview, and sign rewrites of your own records |
 | Backups | ✅, local | Export/import verified cached events and tombstones; no automatic republishing |
 | Dashboard and logs | ✅, local | Read-only cache inspector and bounded SDK diagnostics |
-| Offline persistence and write queue | ✅ | IndexedDB cache and explicit signed queue/replay; memory by default |
+| Offline persistence and write queue | ✅ | IndexedDB cache, exact signed replay, and opt-in automatic retries; memory by default |
 
 Two distinctions matter:
 
@@ -169,7 +172,7 @@ Version **0.2.0** supports modern browsers and Node **22.12+** as an ESM package
 
 See the [API and setup guide](docs/api.md) for installation, typed schemas, auth, queries, channels, and relay write receipts. See the [examples](examples/README.md), [record protocol](docs/protocol.md), and [contributor guide](CONTRIBUTING.md) for more detail.
 
-Feature guides: [Broadcast and Presence](docs/realtime.md), [offline cache and Negentropy](docs/offline-sync.md), [private records and Blossom](docs/private-storage.md), and [search and developer tools](docs/tooling.md).
+Feature guides: [key backup and recovery](docs/key-backup.md), [richer queries](docs/queries.md), [automatic queue replay](docs/automatic-replay.md), [image processing](docs/images.md), [Broadcast and Presence](docs/realtime.md), [offline cache and Negentropy](docs/offline-sync.md), [private records and Blossom](docs/private-storage.md), and [search and developer tools](docs/tooling.md).
 
 Try [Fieldwork](examples/fieldwork/README.md), a complete example app with a project board, private notebook, files, live updates, and offline writes. It consumes the packed SDK and has real browser tests against independent local services. See its [developer experience report](examples/fieldwork/DEVELOPER-EXPERIENCE.md).
 

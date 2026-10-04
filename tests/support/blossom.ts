@@ -5,7 +5,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { verifyEvent } from "nostr-tools";
 import type { NostrEvent } from "../../src";
-import { deferred, required } from "./lifecycle";
+import { deferred, required } from "./async";
 
 interface StoredObject {
   bytes: Buffer;
@@ -67,6 +67,16 @@ export class BlossomServer {
     };
   }
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    response.setHeader("Access-Control-Allow-Origin", "*");
+    if (request.method === "OPTIONS") {
+      response
+        .writeHead(204, {
+          "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Authorization, Content-Type, X-SHA-256",
+        })
+        .end();
+      return;
+    }
     const url = new URL(request.url ?? "/", this.url);
     const method = request.method ?? "GET";
     const action =

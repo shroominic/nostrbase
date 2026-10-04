@@ -30,7 +30,7 @@ await db.from("todos").select().author(pubkey).eq("done", false);
 
 ## Available features
 
-Typed CRUD, upsert, filters, projections, sorting, pages, signer auth, live changes, Broadcast, Presence, personal private tables, Blossom storage, persistence, explicit queued writes, Negentropy recovery, search, schemas, references, migrations, backups, and local tooling are implemented.
+Typed CRUD, upsert, filters, projections, sorting, pages, signer auth, live changes, Broadcast, Presence, personal private tables, Blossom storage, persistence, queued writes with opt-in automatic replay, password-encrypted local key recovery, local image processing, Negentropy recovery, search, schemas, references, migrations, backups, and local tooling are implemented.
 
 [Shared private collections](/docs/groups/) add experimental Marmot membership and MLS encryption. Use `db.from("tasks").inGroup(groupId)` with the familiar query builder. `.inGroup()` and group management are Nostrbase extensions, not Supabase methods. Management calls return `{ data, error, meta? }`; partial joins can retain a handle and accepted publication receipts. Supabase usually models group membership in tables and enforces access with RLS. An unavailable group cannot fall back to public records. Group `sync()` uses ordinary Nostr queries, not Negentropy.
 
@@ -40,7 +40,7 @@ Pagination and counts cover known relay results. Search uses local string matchi
 
 ## Features that need another layer
 
-SQL, server joins, atomic transactions, global constraints, configurable relay-enforced access rules, email/password/OAuth/MFA, Edge Functions/RPC, trusted jobs/webhooks, vector indexing, image transforms, and managed hosting are not supplied.
+SQL, server joins, atomic transactions, global constraints, configurable relay-enforced access rules, email/password/OAuth/MFA, Edge Functions/RPC, trusted jobs/webhooks, vector indexing, CDN image transformations, and managed hosting are not supplied.
 
 A modified client can bypass app rules. Put rules that must be enforced for every participant in a controlled relay or authoritative service. Strong transactions across independent relays require a coordination model.
 

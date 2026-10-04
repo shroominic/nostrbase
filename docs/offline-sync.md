@@ -80,7 +80,7 @@ await replay;
 
 Cancellation stops further work. A relay can have accepted an event before cancellation or before an acknowledgement is lost. Replaying the same event ID handles that case. Removing an entry stops its future delivery. Its optimistic signed event remains in the cache, including a persistent cache. Removal does not roll back record state or send a Nostr deletion request. To inspect relay-confirmed state after removal, create a separate client with a fresh empty cache and pull from the relays. A same-cache restart retains the optimistic event.
 
-There is no automatic replay on reconnect. Call `flush()` explicitly when the active account and connection are ready. Multiple tabs can retry an identical event; the SDK does not provide a distributed queue lock. Signed writes can lose to newer record versions published by another device.
+Replay is manual by default. Set `offline.autoReplay: true` or call `db.offline.startAutoReplay()` to enable replay after sign-in, durable enqueue, browser online, and configured relay connection. See [automatic replay](automatic-replay.md) for retry options, receipts, cancellation, and private group recovery. Multiple tabs can retry an identical event; the SDK does not provide a distributed queue lock. Signed writes can lose to newer record versions published by another device.
 
 ## Pull missing events with Negentropy
 

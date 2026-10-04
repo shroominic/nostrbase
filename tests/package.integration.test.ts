@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { required } from "./support/lifecycle";
 
@@ -20,6 +20,8 @@ describe("published package boundary", () => {
       const paths = packed.files.map((file) => file.path);
       expect(paths).toContain("dist/index.js");
       expect(paths).toContain("dist/index.d.ts");
+      expect(paths).toContain("dist/node.js");
+      expect(paths).toContain("dist/node.d.ts");
       expect(paths.some((path) => path.startsWith("src/") || path.startsWith("tests/"))).toBe(
         false,
       );
@@ -44,8 +46,10 @@ describe("published package boundary", () => {
       };
       // Only dependencies are linked. The consumer imports the unpacked archive, never source paths.
       for (const name of Object.keys(manifest.dependencies))
-        if (!manifest.bundledDependencies.includes(name))
+        if (!manifest.bundledDependencies.includes(name)) {
+          await mkdir(dirname(join(modules, name)), { recursive: true });
           await symlink(join(root, "node_modules", name), join(modules, name), "dir");
+        }
       await mkdir(join(modules, "@types"));
       await symlink(join(root, "node_modules/@types/node"), join(modules, "@types/node"), "dir");
       await writeFile(join(consumer, "package.json"), JSON.stringify({ type: "module" }));
@@ -97,6 +101,18 @@ assert.equal(inserted.error, null);
 assert.equal(inserted.data?.title, "public");
 const selected: Result<Pick<Row<DB["todos"]>, "id" | "title"> | null> = await client.from("todos").local().select("id, title").maybeSingle();
 assert.deepEqual(selected.data, { id: "a", title: "public" });
+const rich = await client.from("todos").local().or("title.ilike.pub%,done.eq.true")
+ .not("id", "in", "(missing)").select("*", { count: "exact", head: true });
+assert.equal(rich.error, null);
+assert.equal(rich.count, 1);
+assert.deepEqual(rich.data, []);
+const backup = await client.auth.exportKey("consumer password", { logn: 10 });
+assert.equal(backup.error, null);
+assert.ok(backup.data?.startsWith("ncryptsec1"));
+assert.equal((await client.auth.signInWithEncryptedKey(backup.data!, "consumer password")).error, null);
+client.offline.startAutoReplay({ initial: false });
+assert.equal(client.offline.autoReplayStatus.running, true);
+client.offline.stopAutoReplay();
 const encrypted = await client.private.from("todos").insert({ id: "b", title: "secret", done: false }).queue().select().single();
 assert.equal(encrypted.error, null);
 assert.equal((await client.private.from("todos").local().single()).data?.title, "secret");
@@ -145,6 +161,9 @@ console.log(JSON.stringify(Object.keys(sdk).sort()));
       expect(exports).toEqual(
         [
           "ApplesauceTransport",
+          "CanvasImageProcessor",
+          "decryptKey",
+          "encryptKey",
           "EventStore",
           "ExtensionSigner",
           "IndexedDBPersistenceAdapter",

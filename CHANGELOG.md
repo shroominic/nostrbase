@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add NIP-49 password-encrypted local key backup and recovery, bounded input/KDF validation, and auth transition settlement for safe replay.
+- Add richer Supabase-style filters: OR/NOT, raw filter expressions, LIKE/ILIKE, JSON paths, deep containment, contained-by/overlap, explicit null ordering, and exact local counts/head queries. Keep native field types and unusual own-property names compatible.
+- Add opt-in automatic replay for public/personal signed queues and Marmot intents, pending envelopes, and Welcomes. Coalesce triggers, cap retry delays, cancel on auth changes/stop/close, and preserve failed writes and partial receipts.
+- Add local image transformations before upload or after verified download. Browser Canvas and the separate optional Sharp Node adapter support raster resize, crop, rotation, mirrors, formats, quality, EXIF orientation, and metadata removal.
+
 - Add explicit encrypted query scope with `db.from(table).inGroup(groupId)`; keep `group.from(table)` as an alias. An unavailable group cannot fall back to public data.
 - Change `groups.create()`, `get()`, `list()`, `invites()`, and `join()` to return `{ data, error, meta? }`. This is a breaking change to the pre-release group API. Check `error`, use `data`, and retain partial join handles and publication receipts for recovery.
 - Honor group query cancellation through relay reads and publication waits. Preserve accepted data and receipts, reject stale handles after auth changes, and serialize concurrent stored-group lookups. Register public and personal sync tables when their queries execute.

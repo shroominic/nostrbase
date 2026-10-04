@@ -4,7 +4,7 @@
 
 Protect the SDK contracts that apps depend on: signed data, author ownership, convergent records, precise partial results, durable writes, and released resources.
 
-The fast suite has **317 tests in 27 files**. Separate environment projects add browser and external service checks. Tests are selected by risk and behavior. There is no line coverage target. Each test name states its contract or the failure it prevents. A passing suite establishes the stated behaviors within the tested environment.
+The fast suite has **430 tests in 33 files**. Separate environment projects add browser and external service checks. Tests are selected by risk and behavior. There is no line coverage target. Each test name states its contract or the failure it prevents. A passing suite establishes the stated behaviors within the tested environment.
 
 ## Run the suite
 
@@ -50,6 +50,10 @@ Live-service checks require explicit endpoints. They default to read-only operat
 | Record encoding | Ambiguous addresses, changed JSON types, omitted false/zero indexes, unsupported versions, incorrect scope, invalid creation times | `protocol.unit.test.ts`, `sdk.test.ts` |
 | Signature verification | Forged fields, malformed wire objects, and reused verification symbols expose unsigned data | `protocol.unit.test.ts`, `tooling.test.ts`, `network.integration.test.ts` |
 | Auth and signing | An older sign-in overwrites a newer one; sign-out or signer mutation permits a delayed write; observer errors change auth state | `auth-transport.unit.test.ts`, `sdk.test.ts`, `tooling.test.ts` |
+| Key backup | Wrong passwords replace a session; malformed envelopes run an unbounded KDF; cancellation exposes key data; backup errors contain secrets | `key-backup.unit.test.ts`, browser `recovery.spec.ts` |
+| Rich queries | Logical branches discard candidates; JSON paths read inherited values; mutated filter input changes queries; count changes with page size | `query.unit.test.ts`, `rich-query-types.unit.test.ts`, `rich-queries.integration.test.ts` |
+| Automatic replay | Duplicate concurrent loops, old callbacks change a new loop, auth transitions send stale work, rejected queues disappear, group recovery returns stale state | `auto-replay.unit.test.ts`, `auto-replay.integration.test.ts`, browser `recovery.spec.ts` |
+| Image processing | Transform pixels or orientation are wrong; padding flattens alpha; oversized cover intermediates fail; upload hashes identify original bytes; download transforms unverified bytes | `image-processing.integration.test.ts`, browser `images.spec.ts` |
 | Query semantics | Coerced comparisons, incorrect subsets, missing/null confusion, wrong sort/range order, widened empty ID filters, invalid queries reaching a relay | `query.unit.test.ts`, `sdk.test.ts` |
 | Cursor pages | Equal timestamps duplicate boundaries, a foreign cursor crosses scope, or an old version reappears because newer versions were outside a cursor bound | `tooling.test.ts`, `private-storage.test.ts` |
 | Record convergence | Arrival order, duplicate echoes, unauthorized tombstones, or deletion/recreation change the final record | `state.unit.test.ts`, `sdk.test.ts` |

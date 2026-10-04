@@ -22,7 +22,7 @@ Keep tombstones when persisting or importing records. Check whether the relay su
 
 ## Queue entries remain
 
-Sign in as the original author and call `db.offline.flush()` explicitly. Check relay receipts and `minWriteAcks`. There is no automatic replay on reconnect. Removing an entry does not roll back its optimistic cache state.
+Sign in as the original author and call `db.offline.flush()` explicitly. Check relay receipts and `minWriteAcks`. To enable replay after reconnect and bounded retries, set `offline.autoReplay`. Inspect `autoReplayStatus.lastResult` and callbacks for failures. Removing an entry does not roll back its optimistic cache state.
 
 ## Presence or Broadcast is missing
 

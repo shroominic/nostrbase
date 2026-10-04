@@ -71,6 +71,12 @@
           "description": "Resolve author-scoped links between records.",
           "source": "docs/tooling.md",
           "section": "Record references"
+        },
+        {
+          "slug": "queries",
+          "title": "Richer queries",
+          "description": "Logical filters, JSON paths, collection filters, counts, and null ordering.",
+          "source": "docs/queries.md"
         }
       ]
     },
@@ -102,6 +108,12 @@
           "title": "Shared private collections",
           "description": "Experimental Marmot groups, encrypted records, and recovery.",
           "source": "docs/groups.md"
+        },
+        {
+          "slug": "key-backup",
+          "title": "Key backup and recovery",
+          "description": "Password-encrypted NIP-49 identity backups.",
+          "source": "docs/key-backup.md"
         }
       ]
     },
@@ -161,6 +173,18 @@
           "description": "Pull missing stored events with NIP-77.",
           "source": "docs/offline-sync.md",
           "section": "Pull missing events with Negentropy"
+        },
+        {
+          "slug": "images",
+          "title": "Image processing",
+          "description": "Local raster transformations in browsers and Node.",
+          "source": "docs/images.md"
+        },
+        {
+          "slug": "automatic-replay",
+          "title": "Automatic queue replay",
+          "description": "Opt-in retries with account isolation and durable exact-event replay.",
+          "source": "docs/automatic-replay.md"
         }
       ]
     },
@@ -539,6 +563,41 @@
       "description": "Encrypted private device state adapters.",
       "module": "src/group-store.ts",
       "guide": "groups"
+    },
+    {
+      "slug": "reference/key-backup",
+      "title": "Key backup",
+      "description": "Public types and methods for key backup.",
+      "module": "src/key-backup.ts",
+      "guide": "key-backup"
+    },
+    {
+      "slug": "reference/auto-replay",
+      "title": "Automatic replay",
+      "description": "Public types and methods for automatic replay.",
+      "module": "src/auto-replay.ts",
+      "guide": "automatic-replay"
+    },
+    {
+      "slug": "reference/images",
+      "title": "Image processing",
+      "description": "Public types and methods for image processing.",
+      "module": "src/image.ts",
+      "guide": "images"
+    },
+    {
+      "slug": "reference/node-images",
+      "title": "Node images",
+      "description": "Public types and methods for node images.",
+      "module": "src/node.ts",
+      "guide": "images"
+    },
+    {
+      "slug": "reference/query-filters",
+      "title": "Filter types",
+      "description": "Public types and methods for filter types.",
+      "module": "src/query-filters.ts",
+      "guide": "queries"
     }
   ]
 }
