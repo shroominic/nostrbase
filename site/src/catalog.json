@@ -1,0 +1,518 @@
+{
+  "groups": [
+    {
+      "title": "Start building",
+      "items": [
+        {
+          "slug": "quickstart",
+          "title": "Quickstart",
+          "description": "Connect a signer and publish your first record.",
+          "source": "docs/guides/quickstart.md"
+        },
+        {
+          "slug": "architecture",
+          "title": "How it works",
+          "description": "From table calls to signed Nostr events.",
+          "source": "docs/guides/architecture.md"
+        },
+        {
+          "slug": "supabase",
+          "title": "From Supabase",
+          "description": "Map APIs and understand the differences.",
+          "source": "docs/guides/supabase.md"
+        },
+        {
+          "slug": "client",
+          "title": "Configure the client",
+          "description": "Relays, schemas, and write acceptance.",
+          "source": "docs/guides/client.md"
+        }
+      ]
+    },
+    {
+      "title": "Database",
+      "items": [
+        {
+          "slug": "crud",
+          "title": "Read and write",
+          "description": "Typed CRUD and author-owned writes.",
+          "source": "docs/guides/crud.md"
+        },
+        {
+          "slug": "filters",
+          "title": "Filters and ordering",
+          "description": "Select, compare, sort, and limit rows.",
+          "source": "docs/guides/filters.md"
+        },
+        {
+          "slug": "pagination",
+          "title": "Cursor pagination",
+          "description": "Newest-first pages over canonical records.",
+          "source": "docs/tooling.md",
+          "section": "Cursor pages"
+        },
+        {
+          "slug": "schemas",
+          "title": "Schemas and types",
+          "description": "Zod validation and TypeScript inference.",
+          "source": "docs/tooling.md",
+          "section": "Typed runtime schemas"
+        },
+        {
+          "slug": "search",
+          "title": "Search",
+          "description": "Client text search and relay-dependent NIP-50.",
+          "source": "docs/tooling.md",
+          "section": "Search"
+        },
+        {
+          "slug": "references",
+          "title": "Record references",
+          "description": "Resolve author-scoped links between records.",
+          "source": "docs/tooling.md",
+          "section": "Record references"
+        }
+      ]
+    },
+    {
+      "title": "Authentication",
+      "items": [
+        {
+          "slug": "authentication",
+          "title": "Connect a signer",
+          "description": "Extensions, private keys, and remote signers.",
+          "source": "docs/api.md",
+          "section": "Auth"
+        },
+        {
+          "slug": "ownership",
+          "title": "Identity and access",
+          "description": "Authors, public data, and trust rules.",
+          "source": "docs/guides/ownership.md"
+        },
+        {
+          "slug": "private-tables",
+          "title": "Private tables",
+          "description": "Personal NIP-44 encrypted records.",
+          "source": "docs/private-storage.md",
+          "section": "Personal private tables"
+        }
+      ]
+    },
+    {
+      "title": "Realtime",
+      "items": [
+        {
+          "slug": "live-changes",
+          "title": "Database changes",
+          "description": "Listen for inserts, updates, and deletes.",
+          "source": "docs/api.md",
+          "section": "Live changes"
+        },
+        {
+          "slug": "broadcast",
+          "title": "Broadcast",
+          "description": "Signed, public ephemeral messages.",
+          "source": "docs/realtime.md",
+          "section": "Broadcast"
+        },
+        {
+          "slug": "presence",
+          "title": "Presence",
+          "description": "Session state, heartbeats, and expiry.",
+          "source": "docs/realtime.md",
+          "section": "Presence"
+        }
+      ]
+    },
+    {
+      "title": "Storage and sync",
+      "items": [
+        {
+          "slug": "storage",
+          "title": "File storage",
+          "description": "Blossom upload, download, list, and delete.",
+          "source": "docs/private-storage.md",
+          "section": "Blossom file storage"
+        },
+        {
+          "slug": "persistence",
+          "title": "Persistent cache",
+          "description": "Verified events and tombstones in IndexedDB.",
+          "source": "docs/offline-sync.md",
+          "section": "Persistent event cache"
+        },
+        {
+          "slug": "offline-writes",
+          "title": "Offline writes",
+          "description": "Sign now and replay exact events later.",
+          "source": "docs/offline-sync.md",
+          "section": "Explicit offline writes"
+        },
+        {
+          "slug": "synchronization",
+          "title": "Negentropy sync",
+          "description": "Pull missing stored events with NIP-77.",
+          "source": "docs/offline-sync.md",
+          "section": "Pull missing events with Negentropy"
+        }
+      ]
+    },
+    {
+      "title": "Tools",
+      "items": [
+        {
+          "slug": "native-events",
+          "title": "Native Nostr events",
+          "description": "Use standard kinds and Applesauce instances.",
+          "source": "docs/api.md",
+          "section": "Native Nostr and Applesauce access"
+        },
+        {
+          "slug": "migrations",
+          "title": "Migrations",
+          "description": "Preview and validate author-owned rewrites.",
+          "source": "docs/tooling.md",
+          "section": "Data migrations"
+        },
+        {
+          "slug": "backups",
+          "title": "Backups",
+          "description": "Export and import cached signed history.",
+          "source": "docs/tooling.md",
+          "section": "Backups"
+        },
+        {
+          "slug": "diagnostics",
+          "title": "Diagnostics",
+          "description": "Bounded, content-free local logs.",
+          "source": "docs/tooling.md",
+          "section": "Diagnostics"
+        },
+        {
+          "slug": "dashboard",
+          "title": "Local dashboard",
+          "description": "Inspect cache, queue, and relay state.",
+          "source": "docs/tooling.md",
+          "section": "Local dashboard"
+        }
+      ]
+    },
+    {
+      "title": "Frameworks",
+      "items": [
+        {
+          "slug": "browser",
+          "title": "Browser",
+          "description": "NIP-07 sign-in and UI lifecycle.",
+          "source": "docs/guides/browser.md"
+        },
+        {
+          "slug": "react",
+          "title": "React and Next.js",
+          "description": "Browser signer calls and effect cleanup.",
+          "source": "docs/guides/react.md"
+        },
+        {
+          "slug": "node",
+          "title": "Node.js",
+          "description": "An ESM script with an Applesauce signer.",
+          "source": "docs/guides/node.md"
+        }
+      ]
+    },
+    {
+      "title": "Reference and help",
+      "items": [
+        {
+          "slug": "errors",
+          "title": "Errors and receipts",
+          "description": "Handle partial writes and relay failures.",
+          "source": "docs/guides/errors.md"
+        },
+        {
+          "slug": "relays",
+          "title": "Relays and deployment",
+          "description": "Choose capabilities and host a client app.",
+          "source": "docs/guides/relays.md"
+        },
+        {
+          "slug": "protocol",
+          "title": "Record protocol",
+          "description": "Wire format, versions, and deletion rules.",
+          "source": "docs/protocol.md"
+        },
+        {
+          "slug": "troubleshooting",
+          "title": "Troubleshooting",
+          "description": "Diagnose common signer, relay, and cache issues.",
+          "source": "docs/guides/troubleshooting.md"
+        },
+        {
+          "slug": "testing",
+          "title": "Testing",
+          "description": "Test commands, contract coverage, fixtures, and limits.",
+          "source": "docs/testing.md"
+        },
+        {
+          "slug": "environment-integration",
+          "title": "Environment integration",
+          "description": "External service and browser test setup, commands, and limits.",
+          "source": "integration/README.md"
+        },
+        {
+          "slug": "verification",
+          "title": "Verification",
+          "description": "What was checked and what remains unverified.",
+          "source": "docs/verification.md"
+        },
+        {
+          "slug": "changelog",
+          "title": "Changelog",
+          "description": "SDK changes by release.",
+          "source": "CHANGELOG.md"
+        }
+      ]
+    }
+  ],
+  "support": [
+    {
+      "slug": "engineering",
+      "title": "Engineering baseline",
+      "description": "Commands, controls, Git flow, and external setup.",
+      "source": "docs/engineering.md"
+    },
+    {
+      "slug": "releasing",
+      "title": "Release policy",
+      "description": "Compatibility, verified artifacts, approval, and recovery.",
+      "source": "docs/releasing.md"
+    },
+    {
+      "slug": "maintainers",
+      "title": "Ownership and review",
+      "description": "Component responsibilities and review requirements.",
+      "source": "MAINTAINERS.md"
+    },
+    {
+      "slug": "security",
+      "title": "Security policy",
+      "description": "Private reporting and repository checks.",
+      "source": "SECURITY.md"
+    },
+    {
+      "slug": "integration/relay",
+      "title": "Independent relay checks",
+      "description": "Pinned relay setup and contract evidence.",
+      "source": "integration/relay/README.md"
+    },
+    {
+      "slug": "integration/browser",
+      "title": "Real browser checks",
+      "description": "IndexedDB and browser lifecycle contracts.",
+      "source": "tests/browser/README.md"
+    },
+    {
+      "slug": "integration/signer",
+      "title": "NIP-46 provider checks",
+      "description": "A separate signer process and approval boundaries.",
+      "source": "integration/signer/README.md"
+    },
+    {
+      "slug": "integration/extension",
+      "title": "Real extension checks",
+      "description": "Pinned nos2x installation and permissions.",
+      "source": "integration/extension/README.md"
+    },
+    {
+      "slug": "integration/blossom",
+      "title": "Independent Blossom checks",
+      "description": "Upstream file service, ownership, and CORS.",
+      "source": "integration/blossom/README.md"
+    },
+    {
+      "slug": "integration/network",
+      "title": "Network fault checks",
+      "description": "Interrupted operations and recovery.",
+      "source": "integration/network/README.md"
+    },
+    {
+      "slug": "integration/crash",
+      "title": "Browser crash checks",
+      "description": "Abrupt process termination and durable recovery.",
+      "source": "integration/crash/README.md"
+    },
+    {
+      "slug": "integration/load",
+      "title": "Bounded load checks",
+      "description": "Workload metrics and lifecycle limits.",
+      "source": "integration/load/README.md"
+    },
+    {
+      "slug": "integration/live",
+      "title": "Live deployment checks",
+      "description": "Explicit endpoints, public findings, and cleanup evidence.",
+      "source": "integration/live/README.md"
+    },
+    {
+      "slug": "integration/ci",
+      "title": "Integration CI",
+      "description": "Hosted job setup, artifacts, and verification limits.",
+      "source": "integration/ci/README.md"
+    },
+    {
+      "slug": "fieldwork",
+      "title": "Fieldwork application",
+      "description": "Packaged SDK setup and meaningful app checks.",
+      "source": "examples/fieldwork/README.md"
+    },
+    {
+      "slug": "fieldwork-experience",
+      "title": "Fieldwork developer experience",
+      "description": "Implementation findings and known limits.",
+      "source": "examples/fieldwork/DEVELOPER-EXPERIENCE.md"
+    }
+  ],
+  "reference": [
+    {
+      "slug": "reference/client",
+      "title": "Client",
+      "description": "createClient and client lifecycle.",
+      "module": "src/client.ts",
+      "guide": "client"
+    },
+    {
+      "slug": "reference/query",
+      "title": "Query builder",
+      "description": "All query methods and result cardinality.",
+      "module": "src/query.ts",
+      "guide": "crud"
+    },
+    {
+      "slug": "reference/types",
+      "title": "Records and results",
+      "description": "Client options, rows, metadata, and transport.",
+      "module": "src/types.ts",
+      "guide": "errors"
+    },
+    {
+      "slug": "reference/auth",
+      "title": "Authentication",
+      "description": "Signer sessions and auth state listeners.",
+      "module": "src/auth.ts",
+      "guide": "authentication"
+    },
+    {
+      "slug": "reference/channel",
+      "title": "Channels",
+      "description": "Live changes, Broadcast, and Presence.",
+      "module": "src/channel.ts",
+      "guide": "live-changes"
+    },
+    {
+      "slug": "reference/private",
+      "title": "Private tables",
+      "description": "Personal queries and decrypted subscriptions.",
+      "module": "src/private.ts",
+      "guide": "private-tables"
+    },
+    {
+      "slug": "reference/storage",
+      "title": "File storage",
+      "description": "Blossom methods and request options.",
+      "module": "src/storage.ts",
+      "guide": "storage"
+    },
+    {
+      "slug": "reference/persistence",
+      "title": "Persistence",
+      "description": "Cache lifecycle and adapter contracts.",
+      "module": "src/persistence.ts",
+      "guide": "persistence"
+    },
+    {
+      "slug": "reference/offline",
+      "title": "Offline queue",
+      "description": "Signed entries and exact-event replay.",
+      "module": "src/offline.ts",
+      "guide": "offline-writes"
+    },
+    {
+      "slug": "reference/sync",
+      "title": "Synchronization",
+      "description": "Pull strategies and per-relay recovery results.",
+      "module": "src/sync.ts",
+      "guide": "synchronization"
+    },
+    {
+      "slug": "reference/schema",
+      "title": "Schema helpers",
+      "description": "Zod validation and inferred database types.",
+      "module": "src/schema.ts",
+      "guide": "schemas"
+    },
+    {
+      "slug": "reference/relations",
+      "title": "References",
+      "description": "Author-scoped record resolution.",
+      "module": "src/relations.ts",
+      "guide": "references"
+    },
+    {
+      "slug": "reference/migrations",
+      "title": "Migrations",
+      "description": "Transform options and partial results.",
+      "module": "src/migrations.ts",
+      "guide": "migrations"
+    },
+    {
+      "slug": "reference/backup",
+      "title": "Backups",
+      "description": "Archive format and verified import.",
+      "module": "src/backup.ts",
+      "guide": "backups"
+    },
+    {
+      "slug": "reference/events",
+      "title": "Native events",
+      "description": "Standard event query, search, and publish.",
+      "module": "src/events.ts",
+      "guide": "native-events"
+    },
+    {
+      "slug": "reference/diagnostics",
+      "title": "Diagnostics",
+      "description": "Log entries, capacity, and subscriptions.",
+      "module": "src/diagnostics.ts",
+      "guide": "diagnostics"
+    },
+    {
+      "slug": "reference/dashboard",
+      "title": "Dashboard",
+      "description": "Snapshots, HTML rendering, and browser mount.",
+      "module": "src/dashboard.ts",
+      "guide": "dashboard"
+    },
+    {
+      "slug": "reference/errors",
+      "title": "Errors",
+      "description": "Error codes and structured error details.",
+      "module": "src/errors.ts",
+      "guide": "errors"
+    },
+    {
+      "slug": "reference/protocol",
+      "title": "Protocol helpers",
+      "description": "Constants and record addressing.",
+      "module": "src/protocol.ts",
+      "guide": "protocol"
+    },
+    {
+      "slug": "reference/transport",
+      "title": "Applesauce transport",
+      "description": "Relay requests, publications, and subscriptions.",
+      "module": "src/transport.ts",
+      "guide": "native-events"
+    }
+  ]
+}

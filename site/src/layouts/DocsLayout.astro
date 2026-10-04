@@ -1,0 +1,175 @@
+---
+import Icon from "../components/Icon.astro";
+import Logo from "../components/Logo.astro";
+import Search from "../components/Search.astro";
+import catalog from "../catalog.json";
+import "../styles/global.css";
+interface Props {
+  title: string;
+  description: string;
+  slug?: string;
+  group?: string;
+  headings?: { depth: number; slug: string; text: string }[];
+  reference?: boolean;
+  home?: boolean;
+}
+const {
+  title,
+  description,
+  slug = "",
+  group = "Documentation",
+  headings = [],
+  reference = false,
+  home = false,
+} = Astro.props;
+const referenceItems = [
+  ...catalog.reference,
+  { slug: "reference/applesauce", title: "Applesauce exports" },
+];
+const groups = reference ? [{ title: "TypeScript API", items: referenceItems }] : catalog.groups;
+const allPages = reference ? referenceItems : catalog.groups.flatMap((group) => group.items);
+const current = allPages.findIndex((page) => page.slug === slug);
+const previous = current > 0 ? allPages[current - 1] : null;
+const next = current >= 0 ? allPages[current + 1] : null;
+const toc = headings.filter((heading) => heading.depth === 2 || heading.depth === 3);
+---
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#111313" />
+    <title>{home && title === "Documentation" ? "nostrbase — Make nostr feel familiar" : `${title} | nostrbase docs`}</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:title" content={home && title === "Documentation" ? "Make nostr feel familiar | nostrbase" : `${title} | nostrbase`} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <script is:inline>
+      try { const theme = localStorage.getItem("nostrbase-docs-theme"); if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme; } catch {}
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <header class="topbar">
+      <div class="brand-group"><a class="brand" href="/" aria-label="nostrbase documentation"><Logo /><span>nostrbase</span></a><span class="brand-divider"></span><a class="docs-label" href="/">docs</a></div>
+      <nav class="top-nav" aria-label="Main navigation"><a href="/docs/quickstart/" class:list={{ active: !reference }}>Guides</a><a href="/docs/reference/client/" class:list={{ active: reference }}>TypeScript API</a><a href="/docs/protocol/">Protocol</a></nav>
+      <div class="top-actions"><button class="search-trigger" data-search aria-label="Search documentation"><Icon name="search" size={16}/><span>Search documentation</span><kbd>⌘ K</kbd></button><button class="icon-button theme-toggle" aria-label="Switch to light theme"><Icon name="sun"/></button><a class="start-button" href="/docs/quickstart/">Start building <Icon name="arrow" size={15}/></a><button class="icon-button mobile-toggle" aria-label="Open navigation" aria-expanded="false" aria-controls="sidebar"><Icon name="menu"/></button></div>
+    </header>
+    <button class="sidebar-backdrop" aria-label="Close navigation" tabindex="-1"></button>
+    <aside class="sidebar" id="sidebar" aria-label="Documentation navigation">
+      <div class="sidebar-scroll">
+        <a class:list={["overview-link", { selected: home }]} href="/"><Icon name="grid" size={16}/>Documentation</a>
+        <div class="sidebar-tabs"><a class:list={{ selected: !reference }} href="/docs/quickstart/">Guides</a><a class:list={{ selected: reference }} href="/docs/reference/client/">API reference</a></div>
+        {groups.map(section => <nav class="nav-group" aria-label={section.title}><h2>{section.title}</h2><ul>{section.items.map(item => <li><a href={`/docs/${item.slug}/`} aria-current={item.slug === slug ? "page" : undefined} class:list={{ selected: item.slug === slug }}>{item.title}{item.slug === "synchronization" && <span class="nav-tag">NIP-77</span>}</a></li>)}</ul></nav>)}
+      </div>
+      <div class="sidebar-bottom"><span class="version-dot"></span><a href="/docs/changelog/">v0.2.0</a><span class="release-label">Local release</span><a href="https://applesauce.hzrd149.com/" target="_blank" rel="noreferrer" aria-label="Applesauce documentation (opens in new tab)"><Icon name="external" size={14}/></a></div>
+    </aside>
+    <div class:list={["workspace", { "home-workspace": home }]}>
+      <main id="main-content" tabindex="-1" class:list={{ "docs-main": !home, "home-main": home }}>
+        {home ? <slot /> : <>
+          <div class="breadcrumbs"><a href="/">Docs</a><Icon name="chevron" size={12}/><span>{group}</span></div>
+          <div class="page-topline"><span class="page-label">{reference ? "API reference" : "Guide"}</span><div class="page-tools"><button class="copy-page" data-copy-page={`/content/${slug}.md`}><Icon name="copy" size={14}/><span>Copy page</span></button><a href={`/content/${slug}.md`} title="Read plain Markdown" aria-label="Read page as Markdown">.md</a></div></div>
+          <header class="page-header"><h1>{title}</h1><p>{description}</p></header>
+          <article class="prose" data-doc-content><slot /></article>
+          {(previous || next) && <nav class="page-pagination" aria-label="Previous and next pages">{previous ? <a href={`/docs/${previous.slug}/`}><span>Previous</span><strong><Icon name="arrow" class="flipped" size={15}/>{previous.title}</strong></a> : <span/>}{next && <a class="next-page" href={`/docs/${next.slug}/`}><span>Next</span><strong>{next.title}<Icon name="arrow" size={15}/></strong></a>}</nav>}
+        </>}
+        <footer class="page-footer"><a href="/">nostrbase</a><span>Built on Applesauce</span><div><a href="/docs/contributing/">Contributing</a><a href="/llms.txt">llms.txt</a><span>v0.2.0</span></div></footer>
+      </main>
+      {!home && <aside class="toc" aria-label="On this page"><div><h2>On this page</h2><nav>{toc.map(heading => <a class:list={{ nested: heading.depth === 3 }} href={`#${heading.slug}`}>{heading.text}</a>)}</nav><div class="toc-support"><Icon name="code" size={17}/><p>Need the exact signature?</p><a href={reference ? `/docs/${catalog.reference.find(item => item.slug === slug)?.guide ?? "quickstart"}/` : "/docs/reference/client/"}>{reference ? "Read the guide" : "Open API reference"}<Icon name="arrow" size={14}/></a></div></div></aside>}
+    </div>
+    <Search />
+    <div id="copy-status" class="sr-only" role="status" aria-live="polite"></div>
+    <script>
+      function updateThemeLabel() {
+        document.querySelector(".theme-toggle")?.setAttribute("aria-label", `Switch to ${document.documentElement.dataset.theme === "dark" ? "light" : "dark"} theme`);
+      }
+      updateThemeLabel();
+      document.querySelector(".theme-toggle")?.addEventListener("click", () => {
+        const theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = theme;
+        try { localStorage.setItem("nostrbase-docs-theme", theme); } catch {}
+        updateThemeLabel();
+      });
+      const menu = document.querySelector<HTMLButtonElement>(".mobile-toggle")!;
+      const sidebar = document.querySelector<HTMLElement>("#sidebar")!;
+      const workspace = document.querySelector<HTMLElement>(".workspace")!;
+      const mobile = window.matchMedia("(max-width: 800px)");
+      function setMenu(open: boolean, returnFocus = false) {
+        document.body.classList.toggle("menu-open", open);
+        menu.setAttribute("aria-expanded", String(open));
+        menu.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+        sidebar.inert = mobile.matches && !open;
+        if (sidebar.inert) sidebar.setAttribute("aria-hidden", "true"); else sidebar.removeAttribute("aria-hidden");
+        workspace.inert = mobile.matches && open;
+        if (open) sidebar.querySelector<HTMLElement>("[aria-current=page], a")?.focus();
+        if (returnFocus) menu.focus();
+      }
+      setMenu(false);
+      mobile.addEventListener("change", () => setMenu(false));
+      menu.addEventListener("click", () => setMenu(menu.getAttribute("aria-expanded") !== "true"));
+      document.querySelector(".sidebar-backdrop")!.addEventListener("click", () => setMenu(false, true));
+      document.addEventListener("keydown", event => {
+        if (!document.body.classList.contains("menu-open") || document.querySelector<HTMLDialogElement>("#search-dialog")?.open) return;
+        if (event.key === "Escape") { setMenu(false, true); return; }
+        if (event.key !== "Tab") return;
+        const links = [menu, ...sidebar.querySelectorAll<HTMLElement>("a, button")];
+        const index = links.indexOf(document.activeElement as HTMLElement);
+        event.preventDefault();
+        links[(index + (event.shiftKey ? links.length - 1 : 1)) % links.length].focus();
+      });
+      sidebar.querySelector<HTMLElement>("[aria-current=page]")?.scrollIntoView({ block: "nearest" });
+      document.querySelectorAll<HTMLButtonElement>("[data-copy-page]").forEach(button => {
+        button.addEventListener("click", async () => {
+          const label = button.querySelector("span")!;
+          try {
+            const response = await fetch(button.dataset.copyPage!);
+            if (!response.ok) throw new Error("Page unavailable");
+            await navigator.clipboard.writeText(await response.text());
+            label.textContent = "Copied";
+            document.querySelector("#copy-status")!.textContent = "Page copied as Markdown.";
+          } catch {
+            label.textContent = "Copy failed";
+            document.querySelector("#copy-status")!.textContent = "Copy failed. Open the Markdown link to copy the page.";
+          }
+          setTimeout(() => { label.textContent = "Copy page"; }, 2000);
+        });
+      });
+      document.querySelectorAll<HTMLPreElement>(".prose pre, .hero-code pre").forEach(pre => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "code-wrapper";
+        pre.before(wrapper);
+        wrapper.append(pre);
+        const button = document.createElement("button");
+        button.className = "code-copy";
+        button.setAttribute("aria-label", "Copy code");
+        button.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 9h12v12H9ZM15 9V3H3v12h6"/></svg>';
+        button.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(pre.querySelector("code")?.textContent ?? pre.textContent ?? "");
+            button.setAttribute("aria-label", "Code copied");
+            button.classList.add("copied");
+            document.querySelector("#copy-status")!.textContent = "Code copied.";
+            setTimeout(() => { button.setAttribute("aria-label", "Copy code"); button.classList.remove("copied"); }, 1800);
+          } catch { button.setAttribute("aria-label", "Copy failed"); document.querySelector("#copy-status")!.textContent = "Code copy failed."; }
+        });
+        wrapper.append(button);
+      });
+      const observer = new IntersectionObserver(entries => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          document.querySelectorAll(".toc nav a").forEach(link => link.classList.toggle("active", link.getAttribute("href") === `#${entry.target.id}`));
+        }
+      }, { rootMargin: "-80px 0px -65% 0px" });
+      document.querySelectorAll(".prose h2, .prose h3").forEach(heading => {
+        observer.observe(heading);
+        const anchor = document.createElement("a");
+        anchor.href = `#${heading.id}`;
+        anchor.className = "heading-anchor";
+        anchor.setAttribute("aria-label", `Link to ${heading.textContent}`);
+        anchor.textContent = "#";
+        heading.append(anchor);
+      });
+    </script>
+  </body>
+</html>

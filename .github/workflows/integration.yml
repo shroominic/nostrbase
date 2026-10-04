@@ -1,0 +1,166 @@
+name: integration
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 2 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+
+jobs:
+  environments:
+    name: ${{ matrix.project }} / Node 22.12.0
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: relay-service
+            relay: true
+            blossom: false
+            chromium: false
+          - project: blossom-service
+            relay: false
+            blossom: true
+            chromium: true
+          - project: remote-signer
+            relay: true
+            blossom: false
+            chromium: false
+          - project: network-faults
+            relay: true
+            blossom: true
+            chromium: false
+          - project: crash-recovery
+            relay: false
+            blossom: false
+            chromium: true
+          - project: load
+            relay: true
+            blossom: false
+            chromium: false
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Use the minimum supported Node version
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.12.0"
+          cache: npm
+      - name: Use locked npm
+        run: npm install --global npm@11.16.0
+      - name: Install SDK dependencies
+        run: npm ci
+      - name: Check Docker readiness
+        if: matrix.relay
+        run: docker info
+      - name: Prepare pinned independent relay images
+        if: matrix.relay
+        run: node integration/relay/prepare.mjs
+      - name: Prepare pinned independent Blossom server
+        if: matrix.blossom
+        run: node integration/blossom/setup.mjs
+      - name: Install Chromium and its Linux system dependencies
+        if: matrix.chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run the integration project without focused tests or retries
+        run: npm run test-${{ matrix.project }} -- --allowOnly=false --retry=0
+      - name: Retain service logs, test reports and workload metrics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: integration-${{ matrix.project }}-node22.12.0-${{ github.run_attempt }}
+          path: |
+            output/environment/**
+            output/integration/**
+            output/playwright/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  browsers:
+    name: browser ${{ matrix.engine }} / Node 22.12.0
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, firefox, webkit]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Use the minimum supported Node version
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.12.0"
+          cache: npm
+      - name: Use locked npm
+        run: npm install --global npm@11.16.0
+      - name: Install SDK dependencies
+        run: npm ci
+      - name: Install the browser and its Linux system dependencies
+        run: npx playwright install --with-deps ${{ matrix.engine }}
+      - name: Test real browser APIs and storage
+        run: npm run test-browser -- --project=${{ matrix.engine }} --forbid-only --retries=0
+      - name: Retain browser traces, screenshots, videos and reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: integration-browser-${{ matrix.engine }}-node22.12.0-${{ github.run_attempt }}
+          path: |
+            output/playwright/**
+            output/integration/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  extension:
+    name: real nos2x extension / Node 22.12.0
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Use the minimum supported Node version
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.12.0"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            integration/extension/package-lock.json
+      - name: Use locked npm
+        run: npm install --global npm@11.16.0
+      - name: Install SDK dependencies
+        run: npm ci
+      - name: Prepare the pinned real browser extension
+        run: node integration/extension/setup.mjs
+      - name: Install full Chromium and its Linux system dependencies
+        run: npx playwright install --with-deps chromium
+      - name: Test extension onboarding, permissions and signing
+        run: npm run test-extension -- --forbid-only --retries=0
+      - name: Retain extension traces and reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: integration-extension-node22.12.0-${{ github.run_attempt }}
+          path: |
+            output/playwright/**
+            output/integration/**
+          if-no-files-found: warn
+          retention-days: 7

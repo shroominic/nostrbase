@@ -1,0 +1,131 @@
+---
+import { Code } from "astro:components";
+import DocsLayout from "../layouts/DocsLayout.astro";
+import Icon from "../components/Icon.astro";
+const examples = [
+  {
+    label: "Create",
+    code: `import { createClient } from "nostrbase";
+
+const db = createClient({
+  namespace: "my-app",
+  relays: ["wss://your-relay.example"],
+});
+
+await db.auth.signInWithExtension();
+
+const { data, error } = await db
+  .from("todos")
+  .insert({ title: "Build something", done: false })
+  .select()
+  .single();`,
+  },
+  {
+    label: "Query",
+    code: `const { data: user } = await db.auth.getUser();
+if (!user) throw new Error("Sign in first.");
+
+const { data, error } = await db
+  .from("todos")
+  .select("id, title, done")
+  .author(user.pubkey)
+  .eq("done", false)
+  .order("title")
+  .limit(20);
+
+// A cache-only read sends no relay request.
+const cached = await db.from("todos").local();`,
+  },
+  {
+    label: "Subscribe",
+    code: `const channel = db
+  .channel("todos")
+  .on("nostr_changes", {
+    table: "todos",
+    event: "*",
+  }, ({ eventType, new: row, old }) => {
+    console.log(eventType, row, old);
+  })
+  .subscribe();
+
+// Release subscriptions and pending cache writes.
+await db.removeChannel(channel);
+await db.closeAsync();`,
+  },
+];
+const features = [
+  {
+    icon: "database",
+    title: "Database",
+    text: "Typed records, filters, schemas, and cursor pages.",
+    href: "crud",
+    tag: "NIP-78",
+  },
+  {
+    icon: "key",
+    title: "Authentication",
+    text: "Connect an extension, private key, or remote signer.",
+    href: "authentication",
+    tag: "NIP-07 / 46",
+  },
+  {
+    icon: "radio",
+    title: "Realtime",
+    text: "Live changes, Broadcast, and Presence.",
+    href: "live-changes",
+    tag: "WebSocket",
+  },
+  {
+    icon: "lock",
+    title: "Private data",
+    text: "Personal tables with encrypted record bodies.",
+    href: "private-tables",
+    tag: "NIP-44",
+  },
+  {
+    icon: "folder",
+    title: "File storage",
+    text: "Hash-verified uploads and downloads via Blossom.",
+    href: "storage",
+    tag: "Blossom",
+  },
+  {
+    icon: "sync",
+    title: "Offline and sync",
+    text: "Persist events, queue writes, and recover missed data.",
+    href: "persistence",
+    tag: "NIP-77",
+  },
+];
+---
+<DocsLayout title="Documentation" description="Make nostr feel familiar. Guides, examples, and complete TypeScript API reference for nostrbase." home>
+  <div class="home-breadcrumb"><span>DOCUMENTATION</span><a href="/docs/changelog/"><span class="version-dot"></span>SDK v0.2.0<Icon name="chevron" size={12}/></a></div>
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-text"><div class="eyebrow"><span></span>A familiar API. A different architecture.</div><h1 id="hero-title">Make nostr<br/> <span>feel familiar</span></h1><p>A TypeScript SDK for signed records, realtime, and personal encrypted data. Built on Applesauce.</p><div class="hero-actions"><a class="primary-button" href="/docs/quickstart/">Start building<Icon name="arrow" size={16}/></a><a class="text-button" href="/docs/architecture/">How it works<Icon name="arrow" size={15}/></a></div><div class="runtime-tags"><span><Icon name="code" size={13}/>TypeScript</span><span>ESM</span><span>Node 22.12+</span><span>Browsers</span></div></div>
+    <div class="hero-code"><div class="code-tabs" role="tablist" aria-label="SDK examples">{examples.map((example, i) => <button id={`example-tab-${i}`} role="tab" aria-selected={i === 0} aria-controls={`example-${i}`} tabindex={i === 0 ? 0 : -1} data-tab={i}>{example.label}</button>)}<span>TypeScript</span></div>{examples.map((example, i) => <div class="example-panel" id={`example-${i}`} role="tabpanel" aria-labelledby={`example-tab-${i}`} hidden={i !== 0}><Code code={example.code} lang="ts" themes={{ light: "github-light", dark: "github-dark" }} defaultColor={false}/></div>)}<div class="code-caption"><span class="version-dot"></span>Writes are signed by the user<Icon name="lock" size={13}/></div></div>
+  </section>
+  <section class="architecture-strip" aria-label="Client and relay architecture"><div class="architecture-title"><span>THE STACK</span><p>Your app connects directly.</p></div><div class="architecture-flow"><a href="/docs/browser/"><Icon name="globe"/><div><strong>Your app</strong><span>UI and app rules</span></div></a><Icon name="arrow" size={16}/><a href="/docs/architecture/"><span class="flow-sdk"><Icon name="layers"/></span><div><strong>nostrbase</strong><span>Signed Nostr events</span></div></a><Icon name="arrow" size={16}/><a href="/docs/relays/"><Icon name="database"/><div><strong>Relays</strong><span>Store and deliver</span></div></a></div></section>
+  <section class="features-section" aria-labelledby="features-heading"><div class="section-heading"><div><h2 id="features-heading">Build your app</h2><p>Choose a feature. Get the code and its constraints.</p></div><a href="/docs/reference/client/">TypeScript reference<Icon name="arrow" size={15}/></a></div><div class="feature-grid">{features.map(feature => <a class="feature-card" href={`/docs/${feature.href}/`}><div class="feature-card-top"><span class="feature-icon"><Icon name={feature.icon} size={21}/></span><span class="feature-tag">{feature.tag}</span></div><h3>{feature.title}<Icon name="arrow" size={15}/></h3><p>{feature.text}</p></a>)}</div></section>
+  <section class="quickstart-section" aria-labelledby="framework-heading"><div><h2 id="framework-heading">Start in your environment</h2><p>Use your existing UI stack.</p></div><div class="environment-links"><a href="/docs/browser/"><span class="environment-icon"><Icon name="globe" size={22}/></span><div><strong>Browser</strong><span>Extension signer</span></div><Icon name="arrow" size={15}/></a><a href="/docs/react/"><span class="environment-icon react-symbol">⚛</span><div><strong>React / Next.js</strong><span>Client component</span></div><Icon name="arrow" size={15}/></a><a href="/docs/node/"><span class="environment-icon"><Icon name="terminal" size={22}/></span><div><strong>Node.js</strong><span>Local or remote signer</span></div><Icon name="arrow" size={15}/></a></div></section>
+  <section class="model-section" aria-labelledby="model-heading"><div class="model-intro"><Icon name="book" size={22}/><h2 id="model-heading">Know the data model</h2><p>Record identity includes the author. Queries cover known relay data. App rules run in the client.</p><a href="/docs/supabase/">Coming from Supabase?<Icon name="arrow" size={15}/></a></div><div class="model-links"><a href="/docs/ownership/"><strong>Identity and access</strong><span>Public data, author ownership, and trust.</span><Icon name="arrow" size={16}/></a><a href="/docs/errors/"><strong>Errors and receipts</strong><span>Handle relay failures and partial writes.</span><Icon name="arrow" size={16}/></a><a href="/docs/protocol/"><strong>Record protocol</strong><span>Addresses, versions, and deletion requests.</span><Icon name="arrow" size={16}/></a></div></section>
+  <div class="release-note"><Icon name="terminal" size={17}/><p><strong>Local release.</strong> Install the built archive; nostrbase is not yet published to npm.</p><a href="/docs/quickstart/#install-the-local-package">Installation<Icon name="arrow" size={14}/></a></div>
+</DocsLayout>
+<script>
+  const tabs = [...document.querySelectorAll<HTMLButtonElement>("[data-tab]")];
+  function activate(tab: HTMLButtonElement) {
+    tabs.forEach(button => { const active = button === tab; button.setAttribute("aria-selected", String(active)); button.tabIndex = active ? 0 : -1; });
+    document.querySelectorAll<HTMLElement>(".example-panel").forEach((panel, i) => { panel.hidden = tabs[i] !== tab; });
+  }
+  tabs.forEach((tab, i) => {
+    tab.addEventListener("click", () => activate(tab));
+    tab.addEventListener("keydown", event => {
+      let next = i;
+      if (event.key === "ArrowRight") next = (i + 1) % tabs.length;
+      else if (event.key === "ArrowLeft") next = (i + tabs.length - 1) % tabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      else return;
+      event.preventDefault(); activate(tabs[next]); tabs[next].focus();
+    });
+  });
+</script>

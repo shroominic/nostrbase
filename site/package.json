@@ -1,0 +1,26 @@
+{
+  "name": "nostrbase-docs",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare-content": "node scripts/prepare-content.mjs",
+    "dev": "npm run prepare-content && astro dev --host 127.0.0.1",
+    "build": "npm run prepare-content && node scripts/check-examples.mjs && astro check && astro build && node scripts/check-links.mjs",
+    "preview": "astro preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.4",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "astro": "^7.3.5",
+    "typescript": "5.9.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "prettier": "^3.9.9"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

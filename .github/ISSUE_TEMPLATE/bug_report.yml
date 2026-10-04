@@ -1,0 +1,27 @@
+name: Bug report
+description: Report an SDK, example, or test defect using development data.
+body:
+  - type: markdown
+    attributes:
+      value: "Report security issues privately under SECURITY.md. Do not include private keys or personal data."
+  - type: input
+    id: environment
+    attributes:
+      label: SDK version and runtime
+      description: Include Node/browser version and relay or Blossom software when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Steps or code with development identities.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual results
+      description: Include redacted errors or partial receipts and the effect on your app.
+    validations:
+      required: true

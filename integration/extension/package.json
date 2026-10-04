@@ -1,0 +1,15 @@
+{
+  "name": "nostrbase-nos2x-integration-build",
+  "private": true,
+  "description": "Frozen build dependencies for the unmodified nos2x integration fixture.",
+  "dependencies": {
+    "@noble/hashes": "1.3.1",
+    "async-mutex": "0.3.2",
+    "esbuild": "0.28.2",
+    "nostr-tools": "2.19.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-qr-code": "2.0.18",
+    "webextension-polyfill": "0.8.0"
+  }
+}

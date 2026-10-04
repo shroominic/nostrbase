@@ -1,0 +1,109 @@
+{
+  "name": "nostrbase",
+  "version": "0.2.0",
+  "description": "A Supabase-style TypeScript SDK for Nostr apps, powered by Applesauce.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "docs",
+    "CONTRIBUTING.md",
+    "MAINTAINERS.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "examples/*.ts",
+    "examples/README.md",
+    "examples/fieldwork/*.md",
+    "examples/fieldwork/src",
+    "examples/fieldwork/index.html",
+    "examples/fieldwork/build.mjs",
+    "examples/fieldwork/serve.mjs",
+    "examples/fieldwork/tsconfig.json"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "npm@11.16.0",
+  "license": "MIT",
+  "keywords": [
+    "nostr",
+    "applesauce",
+    "sdk",
+    "supabase",
+    "realtime",
+    "typescript"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "format": "biome format --write .",
+    "format-check": "biome format .",
+    "lint": "biome lint .",
+    "test-unit": "vitest run --project unit",
+    "test-integration": "vitest run --project integration",
+    "test-e2e": "npm run example:test",
+    "test": "vitest run",
+    "check": "npm run format-check && npm run lint && npm run typecheck && npm test && npm run build",
+    "check-ci": "npm run check && npm run docs:build && npm run check-secrets && npm run check-workflows && npm run test-baseline && npm run test-mutations",
+    "test-baseline": "vitest run --config vitest.baseline.config.ts",
+    "prepare:quality": "node scripts/prepare-quality.mjs",
+    "check-secrets": "node scripts/check-secrets.mjs",
+    "check-workflows": "node scripts/check-workflows.mjs",
+    "check-staged": "node scripts/check-staged.mjs",
+    "audit:dependencies": "node scripts/audit-dependencies.mjs",
+    "prepack": "npm run check",
+    "docs:dev": "npm run build && npm --prefix site run dev",
+    "docs:build": "npm run build && npm --prefix site run build",
+    "docs:preview": "npm --prefix site run preview",
+    "test-mutations": "node scripts/test-mutations.mjs",
+    "test-relay-service": "vitest run --config vitest.environment.config.ts --project relay-service",
+    "test-blossom-service": "vitest run --config vitest.environment.config.ts --project blossom-service",
+    "test-remote-signer": "vitest run --config vitest.environment.config.ts --project remote-signer",
+    "test-network-faults": "vitest run --config vitest.environment.config.ts --project network-faults",
+    "test-crash-recovery": "vitest run --config vitest.environment.config.ts --project crash-recovery",
+    "test-load": "vitest run --config vitest.environment.config.ts --project load",
+    "test-live-services": "vitest run --config vitest.environment.config.ts --project live-services",
+    "test-environments": "vitest run --config vitest.environment.config.ts --project relay-service --project blossom-service --project remote-signer --project network-faults --project crash-recovery --project load",
+    "test-browser": "playwright test --config playwright.config.ts",
+    "test-extension": "playwright test --config playwright.extension.config.ts",
+    "test-extended": "npm run test-environments && npm run test-browser && npm run test-extension",
+    "prepare:integrations": "node scripts/prepare-integrations.mjs",
+    "example:setup": "node scripts/setup-fieldwork.mjs",
+    "example:dev": "node scripts/fieldwork-stack.mjs",
+    "example:test": "npm run example:setup && playwright test --config examples/fieldwork/playwright.config.ts",
+    "example:test:fallback": "FIELDWORK_NO_NEGENTROPY=1 npm run example:test -- --grep \"independent NIP-77\""
+  },
+  "dependencies": {
+    "applesauce-core": "^6.2.0",
+    "applesauce-relay": "^6.2.1",
+    "applesauce-signers": "^6.2.3",
+    "nostr-tools": "~2.19.0",
+    "rxjs": "^7.8.2",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@playwright/test": "1.63.0",
+    "@types/node": "26.6.4",
+    "@types/ws": "8.18.2",
+    "deno": "2.9.6",
+    "esbuild": "0.28.2",
+    "fake-indexeddb": "6.2.5",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "vitest": "5.0.3",
+    "ws": "8.22.0"
+  },
+  "overrides": {
+    "esbuild": "0.28.2"
+  }
+}

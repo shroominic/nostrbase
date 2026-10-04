@@ -1,0 +1,17 @@
+title = "Nostrbase secret checks"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "nostr-private-nsec"
+description = "NIP-19 private key"
+regex = '''\bnsec1[023456789acdefghjklmnpqrstuvwxyz]{58}\b'''
+keywords = ["nsec1"]
+
+[[rules]]
+id = "nostr-private-hex"
+description = "Literal Nostr private key assignment"
+regex = '''(?i)(?:private[_-]?key|secret[_-]?key|NOSTRBASE_LIVE_TEST_KEY|NOSTR_PRIVATE_KEY)\s*[:=]\s*['"]?([0-9a-f]{64})'''
+secretGroup = 1
+keywords = ["private", "secret", "NOSTRBASE_LIVE_TEST_KEY"]
