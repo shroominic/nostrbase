@@ -73,7 +73,7 @@ The project owner selects maintainers, a registry name, and the release destinat
 | Dependency install scripts | Four npm projects | Strict version-pinned policy | .npmrc and allowScripts | Repository maintainer | — |
 | Ownership and change review | Substantive changes | Documented | MAINTAINERS.md, PR template | Project owner | Named accounts before hosting |
 | Release traceability/recovery | Publication | Documented | docs/releasing.md | Release owner | — |
-| Isolated bootstrap worktree | Initial source commit | Bootstrap exception | No base commit existed at task start | Project owner | Initial baseline commit |
+| Isolated bootstrap worktree | Initial source commit | Closed bootstrap exception | No base commit existed at task start; isolated verification followed | Project owner | Initial baseline commit |
 | GitHub checks | Hosted repository | Unverified external | .github/workflows/check.yml | Repository owner | — |
 | Independent release review | Public release | Pending | No release has been made | Repository owner | Before publication |
 | Protected branches and npm access | Hosted repository and registry | Unverified external | No remote/registry setup | Repository owner | — |

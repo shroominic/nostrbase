@@ -4,6 +4,27 @@ Date: 4 October 2026, Asia/Bangkok.
 
 Version 0.2.0 and the current test expansion were checked locally. Public service checks use a generated development identity. Hosted GitHub workflows and npm publication have not been run.
 
+## Engineering baseline completion
+
+The baseline keeps npm, Biome, TypeScript, Vitest, Playwright, and the existing SDK/test architecture. Independent static review found and resolved deletion-only hook handling and source-symlink snapshot boundaries. The [engineering guide](engineering.md) records the inventory, command contract, worktree policy, ownership, controls, and external setup limits.
+
+| Check on 4 October 2026 | Result |
+| --- | --- |
+| Fresh isolated worktree from `18afd4d942e5b9bc80dc253ddc87c644fb9564ed`, final code at `0443664d3994c37cadf94566f5ed62cc6a0bb3a9` | Frozen SDK/site/extension installs pass with strict version-specific installer approvals |
+| `CI=true npm run check-ci` on Node 26.3.0, npm 11.16.0 | Passed: formatting, lint without warnings, types, 224 SDK tests, ESM/declarations, documentation build, source secrets, four workflows, six baseline tests, and 8/8 deliberate faults |
+| Documentation compiler/link check | Passed: 76 pages, 4511 local links/assets in the final build; 58 guide snippets and four complete quickstarts checked |
+| Hook/scanner regressions | Passed: partial staging, hidden format errors, hidden keys with redaction, untracked keys, deletion-only types, and direct/parent directory symlink boundaries |
+| Gitleaks source, staged snapshot, and all local history | Passed with no suppressions; two source commits scanned in the history check |
+| Four npm lockfile audits | Zero reported advisories; reports remain visible rather than imposing an unowned severity policy |
+| Strict npm negative check | An unreviewed local fixture installer is rejected before execution |
+| Fieldwork bootstrap and frozen reinstall | Fresh SDK archive, independent app TypeScript/browser build, and strict-policy `npm ci --prefix examples/fieldwork` pass |
+
+The control checkout is `/Users/fungus/dev/nostrbase` on `main`. The isolated verification checkout is `/Users/fungus/dev/_worktrees/nostrbase/chore/baseline-verification` on `chore/baseline-verification`. Local hooks use `.githooks`; fresh clones must enable them explicitly. The inventory script now completes against the recorded Git base.
+
+The configured 1Password signer failed twice with `failed to fill whole buffer`. Follow-up local baseline commits use a per-command unsigned fallback; Git signing settings were not changed. No remote, branch protection, named CODEOWNERS accounts, vulnerability reporting destination, or npm publication account is configured. Those controls remain external owner decisions. Hosted Actions execution is unverified.
+
+The full fresh-check log is `output/baseline-check-ci.log` in the verification worktree. Baseline tests do not require public services or add a coverage target.
+
 ## Environment integration expansion
 
 Eight separate local projects add **68 check executions**. The aggregate `npm run test-extended` passes on Node 26.3.0. Every infrastructure project also passes on Node 22.12.0. Browser and extension project results below use Node 26.3.0.
