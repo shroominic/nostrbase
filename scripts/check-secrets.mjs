@@ -57,10 +57,10 @@ try {
     for (const file of files) {
       const destination = resolve(snapshot, file);
       if (!destination.startsWith(`${snapshot}/`)) throw new Error("Invalid repository path.");
-      await mkdir(dirname(destination), { recursive: true });
-      if (mode === "--staged")
+      if (mode === "--staged") {
+        await mkdir(dirname(destination), { recursive: true });
         await writeFile(destination, execFileSync("git", ["show", `:${file}`], { cwd: root }));
-      else {
+      } else {
         try {
           const source = resolve(root, file);
           const parent = await realpath(dirname(source));
@@ -68,6 +68,7 @@ try {
             throw new Error(
               `Source path escapes the repository through a directory symlink: ${file}`,
             );
+          await mkdir(dirname(destination), { recursive: true });
           if ((await lstat(source)).isSymbolicLink())
             await writeFile(destination, await readlink(source));
           else await copyFile(source, destination);

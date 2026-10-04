@@ -70,6 +70,7 @@ The project owner selects maintainers, a registry name, and the release destinat
 | Source/history secrets | Commits and CI | Configured | Gitleaks pins, .gitleaks.toml, security.yml | Repository maintainer | — |
 | Workflow and docs validity | Pull requests | Local gates | check-ci, actionlint, site compiler/link checker | Repository maintainer | — |
 | Dependency advisories/updates | Four npm projects and actions | Reporting/configured | audit:dependencies, Dependabot | Repository maintainer | — |
+| Dependency install scripts | Four npm projects | Strict version-pinned policy | .npmrc and allowScripts | Repository maintainer | — |
 | Ownership and change review | Substantive changes | Documented | MAINTAINERS.md, PR template | Project owner | Named accounts before hosting |
 | Release traceability/recovery | Publication | Documented | docs/releasing.md | Release owner | — |
 | Isolated bootstrap worktree | Initial source commit | Bootstrap exception | No base commit existed at task start | Project owner | Initial baseline commit |

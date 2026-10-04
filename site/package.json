@@ -3,6 +3,10 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": true
+  },
   "scripts": {
     "prepare-content": "node scripts/prepare-content.mjs",
     "dev": "npm run prepare-content && astro dev --host 127.0.0.1",
