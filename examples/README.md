@@ -32,6 +32,8 @@ The example uses Node's built-in WebSocket. Set `NOSTR_PRIVATE_KEY` to a hex or 
 
 ## Extended features
 
+`groups.ts` shows two accounts that create and join a Marmot group, share a private task, and close their clients. Set the configured relay before running it. Both accounts use fixed development keys and memory state. See [shared private collections](../docs/groups.md) for durable device storage, membership, recovery, and the experimental engine limits.
+
 `extended.ts` exports `runExtendedExample(relay)`. It demonstrates Zod inference, queued public writes and replay, cursor/text search, author-scoped references, personal encrypted data, Broadcast, Presence, synchronization, migration previews, backups, and the inspector. It uses a temporary development identity and memory persistence. It performs writes to the relay you supply.
 
 For browser persistence, replace the memory adapter with `new IndexedDBPersistenceAdapter("my-app-cache")`. For files, use `db.storage.from("https://your-blossom-server.example")`; see [private records and storage](../docs/private-storage.md). Keep a stable production identity supplied by the user.

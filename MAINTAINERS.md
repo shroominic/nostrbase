@@ -5,6 +5,7 @@ The project owner is accountable for this repository. No GitHub account, npm org
 | Area | Responsible role | Review focus |
 | --- | --- | --- |
 | `src/`, protocol, public declarations | SDK maintainer | API compatibility, signed data, ownership, encryption, partial receipts |
+| `src/group*.ts`, `vendor/`, private group protocol | SDK maintainer and reviewer familiar with MLS | Membership, convergence, encrypted device state, exact replay, engine provenance and patches |
 | `tests/`, `integration/`, test setup | SDK maintainer | Independent evidence, deterministic faults, cleanup, pinned software |
 | `site/`, `docs/`, examples | Documentation maintainer | Working examples, links, accessibility, accurate feature claims |
 | `.github/`, `.githooks/`, `scripts/`, lockfiles | Repository maintainer | Least privilege, reproducibility, supply chain, local/CI parity |

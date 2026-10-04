@@ -1,0 +1,57 @@
+diff --git a/src/client/session/group-session.ts b/src/client/session/group-session.ts
+index 7ffdd7f..5df36b8 100644
+--- a/src/client/session/group-session.ts
++++ b/src/client/session/group-session.ts
+@@ -224,6 +224,16 @@ export class GroupSession<
+   readonly #removedMarkerStore?: GenericKeyValueStore<boolean>;
+   readonly history: THistory;
+ 
++  /**
++   * SDK durability boundary for authenticated incoming results. Awaited before
++   * session history, terminal evidence, reconciliation, or state is persisted.
++   * A rejected hook aborts that operation; callers must discard the mutated
++   * in-memory session and reload its last durable state before retrying.
++   */
++  beforeIngestResult?: (
++    result: DispositionedIngestResult,
++  ) => void | Promise<void>;
++
+   readonly #engine: MarmotGroupEngine<NostrEvent>;
+   readonly #peeler: NostrGroupPeeler;
+   readonly #sentEventIds = new Set<string>();
+@@ -404,8 +414,11 @@ export class GroupSession<
+    */
+   async reconverge(): Promise<DispositionedIngestResult[]> {
+     const results: DispositionedIngestResult[] = [];
+-    for (const result of await this.#engine.reconvergeFromHistory())
+-      results.push(...(await this.#reconcile(mapEngineIngestResult(result))));
++    for (const result of await this.#engine.reconvergeFromHistory()) {
++      const mapped = mapEngineIngestResult(result);
++      await this.beforeIngestResult?.(mapped);
++      results.push(...(await this.#reconcile(mapped)));
++    }
+     await this.save();
+     return results;
+   }
+@@ -413,8 +426,11 @@ export class GroupSession<
+   /** Runs one retained-input scheduler edge through the normal reconciliation seam. */
+   async driveConvergence(): Promise<DispositionedIngestResult[]> {
+     const results: DispositionedIngestResult[] = [];
+-    for (const result of await this.#engine.driveConvergence())
+-      results.push(...(await this.#reconcile(mapEngineIngestResult(result))));
++    for (const result of await this.#engine.driveConvergence()) {
++      const mapped = mapEngineIngestResult(result);
++      await this.beforeIngestResult?.(mapped);
++      results.push(...(await this.#reconcile(mapped)));
++    }
+     await this.#persistSelectedDisbandIfPossible(
+       this.#engine.selectedDisbandEvidence,
+     );
+@@ -828,6 +844,7 @@ export class GroupSession<
+ 
+     for await (const result of this.#engine.ingest(rest, options)) {
+       const mapped = mapEngineIngestResult(result);
++      await this.beforeIngestResult?.(mapped);
+ 
+       if (mapped.kind === "processed")
+         await this.#persistSelectedDisbandIfPossible(mapped.selectedTerminal);

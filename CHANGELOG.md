@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add experimental Marmot shared private collections: invitations, membership, encrypted CRUD, author-signed history snapshots, subscriptions, device storage, queued intents, and exact-envelope recovery. Preserve the Supabase-style query builder; group management is a Nostr-specific API.
+- Bundle the pinned unreleased Marmot 0.6.0 engine and MLS fork with recorded provenance. This feature has no production cryptographic audit or released White Noise interoperability claim.
+
 - Complete local engineering controls: staged hooks, secret/workflow checks, dependency reporting and updates, documentation CI, action pins, ownership, and release policy.
 
 - Add Fieldwork, a complete browser example consuming the packed SDK, with a project board, personal notes, files, live room, offline replay, and developer tools.

@@ -96,6 +96,12 @@
           "description": "Personal NIP-44 encrypted records.",
           "source": "docs/private-storage.md",
           "section": "Personal private tables"
+        },
+        {
+          "slug": "groups",
+          "title": "Shared private collections",
+          "description": "Experimental Marmot groups, encrypted records, and recovery.",
+          "source": "docs/groups.md"
         }
       ]
     },
@@ -371,6 +377,12 @@
       "title": "Fieldwork developer experience",
       "description": "Implementation findings and known limits.",
       "source": "examples/fieldwork/DEVELOPER-EXPERIENCE.md"
+    },
+    {
+      "slug": "marmot-engine",
+      "title": "Marmot engine provenance",
+      "description": "Pinned experimental engine source and build.",
+      "source": "vendor/README.md"
     }
   ],
   "reference": [
@@ -513,6 +525,20 @@
       "description": "Relay requests, publications, and subscriptions.",
       "module": "src/transport.ts",
       "guide": "native-events"
+    },
+    {
+      "slug": "reference/groups",
+      "title": "Private groups",
+      "description": "Marmot membership, collections, and device lifecycle.",
+      "module": "src/groups.ts",
+      "guide": "groups"
+    },
+    {
+      "slug": "reference/group-store",
+      "title": "Group storage",
+      "description": "Encrypted private device state adapters.",
+      "module": "src/group-store.ts",
+      "guide": "groups"
     }
   ]
 }

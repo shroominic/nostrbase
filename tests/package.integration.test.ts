@@ -20,14 +20,13 @@ describe("published package boundary", () => {
       const paths = packed.files.map((file) => file.path);
       expect(paths).toContain("dist/index.js");
       expect(paths).toContain("dist/index.d.ts");
-      expect(
-        paths.some(
-          (path) =>
-            path.startsWith("src/") ||
-            path.startsWith("tests/") ||
-            path.startsWith("node_modules/"),
-        ),
-      ).toBe(false);
+      expect(paths.some((path) => path.startsWith("src/") || path.startsWith("tests/"))).toBe(
+        false,
+      );
+      expect(paths).toContain(
+        "node_modules/@internet-privacy/marmot-ts/dist/client/session/group-session.js",
+      );
+      expect(paths).toContain("vendor/patches/marmot-ingress-durability.patch");
       const consumer = join(directory, "consumer");
       const modules = join(consumer, "node_modules");
       const installed = join(modules, "nostrbase");
@@ -41,10 +40,12 @@ describe("published package boundary", () => {
       ]);
       const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as {
         dependencies: Record<string, string>;
+        bundledDependencies: string[];
       };
       // Only dependencies are linked. The consumer imports the unpacked archive, never source paths.
       for (const name of Object.keys(manifest.dependencies))
-        await symlink(join(root, "node_modules", name), join(modules, name), "dir");
+        if (!manifest.bundledDependencies.includes(name))
+          await symlink(join(root, "node_modules", name), join(modules, name), "dir");
       await mkdir(join(modules, "@types"));
       await symlink(join(root, "node_modules/@types/node"), join(modules, "@types/node"), "dir");
       await writeFile(join(consumer, "package.json"), JSON.stringify({ type: "module" }));
@@ -124,7 +125,9 @@ console.log(JSON.stringify(Object.keys(sdk).sort()));
           "EventStore",
           "ExtensionSigner",
           "IndexedDBPersistenceAdapter",
+          "IndexedDBGroupStateAdapter",
           "MemoryPersistenceAdapter",
+          "MemoryGroupStateAdapter",
           "NostrConnectSigner",
           "NostrbaseAuth",
           "NostrbaseBackup",
@@ -134,6 +137,8 @@ console.log(JSON.stringify(Object.keys(sdk).sort()));
           "NostrbaseDiagnostics",
           "NostrbaseError",
           "NostrbaseEvents",
+          "NostrbaseGroup",
+          "NostrbaseGroups",
           "NostrbaseMigrations",
           "NostrbaseOffline",
           "NostrbasePersistence",

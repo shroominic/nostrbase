@@ -26,7 +26,8 @@
     "examples/fieldwork/index.html",
     "examples/fieldwork/build.mjs",
     "examples/fieldwork/serve.mjs",
-    "examples/fieldwork/tsconfig.json"
+    "examples/fieldwork/tsconfig.json",
+    "vendor"
   ],
   "sideEffects": false,
   "engines": {
@@ -88,6 +89,7 @@
     "example:test:fallback": "FIELDWORK_NO_NEGENTROPY=1 npm run example:test -- --grep \"independent NIP-77\""
   },
   "dependencies": {
+    "@internet-privacy/marmot-ts": "file:vendor/internet-privacy-marmot-ts-0.6.0-nostrbase.2.tgz",
     "applesauce-core": "^6.2.0",
     "applesauce-relay": "^6.2.1",
     "applesauce-signers": "^6.2.3",
@@ -110,5 +112,11 @@
   },
   "overrides": {
     "esbuild": "0.28.2"
-  }
+  },
+  "bundledDependencies": [
+    "@internet-privacy/marmot-ts"
+  ],
+  "bundleDependencies": [
+    "@internet-privacy/marmot-ts"
+  ]
 }

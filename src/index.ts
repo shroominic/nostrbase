@@ -21,6 +21,16 @@ export { NostrbaseDiagnostics } from "./diagnostics";
 export type { ErrorCode } from "./errors";
 export { NostrbaseError } from "./errors";
 export { NostrbaseEvents } from "./events";
+export type { GroupStateAdapter } from "./group-store";
+export { IndexedDBGroupStateAdapter, MemoryGroupStateAdapter } from "./group-store";
+export type {
+  CreatePrivateGroupOptions,
+  GroupChangePayload,
+  GroupsOptions,
+  PrivateGroupInfo,
+  PrivateGroupInvite,
+} from "./groups";
+export { NostrbaseGroup, NostrbaseGroups } from "./groups";
 export type { MigrationOptions, MigrationResult } from "./migrations";
 export { NostrbaseMigrations } from "./migrations";
 export type { OfflineOptions, QueuedWriteReceipt } from "./offline";

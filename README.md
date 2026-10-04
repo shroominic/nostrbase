@@ -100,6 +100,20 @@ Private tables encrypt the record body to the user's own key with NIP-44. The si
 
 **Your app needs no separate application server for these record operations.** Relays provide storage and delivery. Files use a separate Blossom HTTP server. Authors edit their own records; application rules run in the client.
 
+### 7. Share private collections
+
+```ts
+const group = await db.groups.create({ name: "Team workspace" });
+// Bob first publishes a Marmot KeyPackage from his own client.
+await group.invite(bobPubkey);
+await group.from("tasks").insert({ title: "Build the website", done: false });
+const { data, error } = await group.from("tasks").select();
+```
+
+Marmot manages membership and MLS encryption. Applesauce sends ciphertext through Nostr relays. Members read shared records; each author edits their own records. New members receive signed record snapshots. Durable device state uses a separate self-encrypted adapter.
+
+The query builder is Supabase-style. **Supabase has no built-in `groups.create()` or `group.from()`**; it uses membership tables and Row Level Security. This group handle selects an encrypted scope. The Marmot integration is experimental and uses an unreleased engine snapshot. See [shared private collections](docs/groups.md) for setup, recovery, and limits.
+
 ## Which Supabase features are available?
 
 The SDK provides the familiar client API and the following Nostr equivalents. These features do not supply PostgreSQL guarantees or the full Supabase platform.
@@ -123,9 +137,9 @@ The SDK provides the familiar client API and the following Nostr equivalents. Th
 | Joins and foreign keys | Partial | Author-scoped references resolved on the client; no enforced foreign keys or SQL joins |
 | Transactions | ❌ | Writes can succeed independently |
 | Global uniqueness constraints | ❌ | Record identity includes the author |
-| Row Level Security | Partial equivalent | Author ownership checks; no configurable server access policies |
+| Row Level Security | Partial equivalent | Author ownership and encrypted group membership; no configurable server access policies |
 | Email/password, OAuth, magic links, MFA | ❌ | Nostr signer auth only |
-| Private tables | ✅, personal | Self-encrypted NIP-44 records; no shared private tables or group key management |
+| Private tables | ✅, personal; experimental shared | NIP-44 personal records and Marmot/MLS group collections |
 | Full-text search | Partial | Local table text search; NIP-50 raw event search on supporting relays |
 | Vector search | ❌ | Needs a separate index/service |
 | Schema validation | ✅, client-side | Zod or custom validators and inferred types; no relay-enforced schema |
@@ -139,7 +153,7 @@ Two distinctions matter:
 - **Auth identifies who signed a record.** It does not restrict who can read public records.
 - **Queries operate over relay results.** They do not guarantee a complete global table.
 
-You can build todo apps, profiles, feeds, directories, personal encrypted notes, and apps that attach files. Shared private collaboration, transactions, server functions, global constraints, and server-enforced business rules need more infrastructure or protocols.
+You can build todo apps, profiles, feeds, directories, personal encrypted notes, and apps that attach files. Experimental private collaboration uses Marmot groups. Transactions, server functions, global constraints, and server-enforced business rules need more infrastructure or protocols.
 
 ## Start building
 

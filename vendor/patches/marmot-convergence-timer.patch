@@ -1,0 +1,25 @@
+diff --git a/src/engine/group-engine.ts b/src/engine/group-engine.ts
+index bd562aa..a868feb 100644
+--- a/src/engine/group-engine.ts
++++ b/src/engine/group-engine.ts
+@@ -2434,11 +2434,17 @@ export class MarmotGroupEngine<TEnvelope> {
+     const cutoffAt = this.#convergencePass
+       ? Math.min(quiescenceAt, this.#convergencePass.deadlineMs)
+       : quiescenceAt;
+-    const delay = Math.max(0, cutoffAt - nowMs);
++    const delay = Math.max(0, Math.ceil(cutoffAt - nowMs));
+     this.#settleTimer = this.#scheduler.setTimer(delay, () => {
+       this.#settleTimer = undefined;
+-      if (this.#convergencePass && this.#now() >= cutoffAt)
+-        this.#closeConvergencePass();
++      // A host timer can wake before a fractional monotonic deadline. Keep the
++      // owner asleep until the cutoff; otherwise its one-shot outbound drain
++      // observes Syncing and queued intents have no remaining wake-up.
++      if (this.#now() < cutoffAt) {
++        this.#scheduleSettleCheck();
++        return;
++      }
++      if (this.#convergencePass) this.#closeConvergencePass();
+       // Fire-and-forget; the owner's drain handles and logs its own errors.
+       void this.#onSettleCheck?.();
+     });

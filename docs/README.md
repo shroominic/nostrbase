@@ -19,6 +19,7 @@ Open `http://127.0.0.1:4321`. Build static HTML with `npm run docs:build`; previ
 - [From Supabase](guides/supabase.md)
 - [Read and write](guides/crud.md), [filters](guides/filters.md), [API setup](api.md)
 - [Realtime](realtime.md), [private data and files](private-storage.md), [offline and sync](offline-sync.md)
+- [Shared private Marmot collections](groups.md)
 - [Search and tools](tooling.md), [errors](guides/errors.md), [troubleshooting](guides/troubleshooting.md)
 - [Wire protocol](protocol.md), [verification](verification.md)
 - [Engineering baseline](engineering.md), [release policy](releasing.md), [ownership](../MAINTAINERS.md), [security](../SECURITY.md)

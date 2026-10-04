@@ -45,6 +45,6 @@ A **client-side query** runs in the app and can fetch relay data. A **cache-only
 
 A signature proves origin. It does not prove truth, app approval, or permission to join a collection. Namespaces label data; they do not restrict access.
 
-Public tables are public. [Personal private tables](/docs/private-tables/) encrypt bodies to the author. Transactions, global uniqueness, shared private groups, and trusted server functions require more protocols or services.
+Public tables are public. [Personal private tables](/docs/private-tables/) encrypt bodies to the author. [Shared private groups](/docs/groups/) use experimental Marmot/MLS membership and encryption. Transactions, global uniqueness, and trusted server functions require more services.
 
 Use [native events](/docs/native-events/) when interoperability calls for an existing Nostr kind. Use tables for application records. [Wire format](/docs/protocol/).

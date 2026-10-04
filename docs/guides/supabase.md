@@ -21,7 +21,7 @@ await db.from("todos").select().author(pubkey).eq("done", false);
 | SQL row | Latest signed event at an author-scoped address |
 | Update in place | New signed version |
 | Row Level Security (RLS) | Author write checks; public reads remain public |
-| Private row policy | Personal NIP-44 encrypted body |
+| Private row policy | Personal NIP-44 records; experimental Marmot group scope |
 | Realtime | Verified table events; ephemeral Broadcast/Presence |
 | Storage bucket / path | Blossom server / SHA-256 object |
 | Foreign key | JSON reference resolved in the client |
@@ -32,13 +32,15 @@ await db.from("todos").select().author(pubkey).eq("done", false);
 
 Typed CRUD, upsert, filters, projections, sorting, pages, signer auth, live changes, Broadcast, Presence, personal private tables, Blossom storage, persistence, explicit queued writes, Negentropy recovery, search, schemas, references, migrations, backups, and local tooling are implemented.
 
+[Shared private collections](/docs/groups/) add experimental Marmot membership and MLS encryption. Their query builder is familiar; `groups.create()` and `group.from()` are Nostr-specific extensions. Supabase usually models group membership in tables and enforces access with RLS.
+
 ## Partial equivalents
 
 Pagination and counts cover known relay results. Search uses local string matching or relay-dependent NIP-50. References do not enforce foreign keys. Schema checks run in the client. Presence is approximate. Backups cover cached events.
 
 ## Features that need another layer
 
-SQL, server joins, atomic transactions, global constraints, configurable relay-enforced access rules, shared encrypted collections, email/password/OAuth/MFA, Edge Functions/RPC, trusted jobs/webhooks, vector indexing, image transforms, and managed hosting are not supplied.
+SQL, server joins, atomic transactions, global constraints, configurable relay-enforced access rules, email/password/OAuth/MFA, Edge Functions/RPC, trusted jobs/webhooks, vector indexing, image transforms, and managed hosting are not supplied.
 
 A modified client can bypass app rules. Put rules that must be enforced for every participant in a controlled relay or authoritative service. Strong transactions across independent relays require a coordination model.
 
@@ -50,4 +52,4 @@ A modified client can bypass app rules. Put rules that must be enforced for ever
 4. Handle partial writes, version conflicts, and deletion requests.
 5. Select and test relays and optional file servers.
 
-Start with a profile, feed, directory, todo app, or personal encrypted notebook. Evaluate extra infrastructure before porting shared private or transaction-dependent workflows.
+Start with a profile, feed, directory, todo app, or personal encrypted notebook. Evaluate the experimental engine and device-state requirements before using private groups. Transaction-dependent workflows still need a coordination layer.

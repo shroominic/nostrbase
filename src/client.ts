@@ -10,6 +10,7 @@ import { NostrbaseDashboard } from "./dashboard";
 import { NostrbaseDiagnostics } from "./diagnostics";
 import { asError, NostrbaseError } from "./errors";
 import { NostrbaseEvents } from "./events";
+import { NostrbaseGroups } from "./groups";
 import { NostrbaseMigrations } from "./migrations";
 import { NostrbaseOffline } from "./offline";
 import { NostrbasePersistence } from "./persistence";
@@ -59,6 +60,7 @@ export class NostrbaseClient<DB extends SchemaShape<DB> = DefaultSchema> impleme
   readonly offline: NostrbaseOffline;
   readonly sync: NostrbaseSync;
   readonly private: NostrbasePrivateTables<DB>;
+  readonly groups: NostrbaseGroups<DB>;
   readonly storage: NostrbaseStorage<DB>;
   readonly backup: NostrbaseBackup;
   readonly relations: NostrbaseRelations<DB>;
@@ -165,6 +167,7 @@ export class NostrbaseClient<DB extends SchemaShape<DB> = DefaultSchema> impleme
     );
     this.sync = new NostrbaseSync(this, options.sync);
     this.private = new NostrbasePrivateTables(this);
+    this.groups = new NostrbaseGroups(this, options.groups);
     this.storage = new NostrbaseStorage(this, options.storage);
     this.backup = new NostrbaseBackup(this);
     this.relations = new NostrbaseRelations(this);
@@ -666,6 +669,7 @@ export class NostrbaseClient<DB extends SchemaShape<DB> = DefaultSchema> impleme
     this.observers.unsubscribe();
     this.sync.close();
     this.private.close();
+    this.groups.close();
     for (const channel of this.channels) channel.unsubscribe();
     this.channels.clear();
     for (const dispose of this.eventSubscriptions) dispose();
@@ -673,6 +677,7 @@ export class NostrbaseClient<DB extends SchemaShape<DB> = DefaultSchema> impleme
     this.auth.dispose();
     this.closing = this.offline
       .close()
+      .then(() => this.groups.closeAsync())
       .then(() => this.persistence?.close())
       .then(() => {});
     void this.closing.catch(() => this.diagnostics.record("error", "close"));

@@ -4,6 +4,31 @@ Date: 4 October 2026, Asia/Bangkok.
 
 Version 0.2.0 and the current test expansion were checked locally. Public service checks use a generated development identity. Hosted GitHub workflows and npm publication have not been run.
 
+## Marmot private collections
+
+This change adds experimental shared private collections with a pinned Marmot engine. It starts from clean `main` commit `ca9ca52` in a managed worktree on `feature/marmot-private-collections`. The API, encrypted wire format, example, and dependency provenance are documented together. See [groups](groups.md) and [vendor provenance](../vendor/README.md).
+
+Acceptance covers authenticated group admission, author-owned CRUD, canonical MLS projection, encrypted device storage, offline intents, exact-envelope retries, preserved partial receipts, and recovery after publication or receive persistence failure. Independent subagent review covered transport trust, publication journals, received record admission, Welcome recovery, and account/device isolation. This is implementation review, not a cryptographic audit.
+
+The new tests use real signed events, the pinned MLS engine, actual loopback WebSockets through Applesauce, controlled storage failures, and simulated IndexedDB. They cover invite/join, signed history snapshots, live CRUD, three-member removal, schema and author checks, same-batch removal admission, restart/auth isolation, repeated Welcome failures, exact rejected-envelope replay, partial acknowledgements, and queued write composition.
+
+| Check on 4 October 2026 | Result |
+| --- | --- |
+| Frozen SDK and site installs | Passed with strict installer policy; zero reported dependency advisories |
+| `CI=true npm run check-ci` on Node 26.3.0, npm 11.16.0 | Passed: formatting, lint, types, 292 SDK tests in 26 files, ESM/declarations, docs, source secrets, four workflows, six baseline tests, and 8/8 deliberate faults |
+| Documentation compiler/link check | Passed: 78 content pages, 80 generated pages, 4889 local links/assets, 100 local and 8 external exports; zero compiler errors or warnings |
+| All new group tests on Node 22.12.0 | Passed: 68 tests in eight files |
+| Engine convergence scheduling and group lifecycle | Passed: 27 upstream tests; independent review approved the timer correction |
+| Fresh npm-installed archive consumer | Passed on Node 22.12.0 and 26.3.0: group types, CRUD, queue/flush, restart, installed patch, and browser module bundle |
+
+The first frozen SDK run found a lost convergence timer wake. An early host callback could leave an invitation waiting after the real deadline. The engine patch rounds delays up and schedules another check after an early wake, while retaining the original convergence and lifecycle gates. The same-batch removal test forces that boundary: it failed against the old runtime and passes against the rebuilt archive. Source is unchanged by the test runner. Full results are retained in `output/marmot-check-ci.log` and `output/marmot-node22.log` in the managed worktree.
+
+A separate empty npm app installs the SDK archive with registry dependencies, without source links. Its TypeScript consumer checks group types, CRUD, queue/flush, stored-state restart, ciphertext-only wire data, and the installed engine patch. The same app runs on Node 22.12.0 and 26.3.0 and bundles for a browser. Node 22.12 emits its experimental Ed25519/X25519 Web Crypto warnings. The all-exports browser bundle is about 2.2 MB before minification; this is a module-resolution check, not a browser performance result.
+
+The engine archive is precompiled. Its upstream `prepare` entry remains in package metadata, so the consumer's strict npm policy reports that script as unapproved. The recorded install does not require that script to run. The local feature commit uses the existing unsigned fallback after the baseline's recorded 1Password signing failures; Git signing settings remain unchanged.
+
+Group tests do not establish released White Noise interoperability, a production cryptographic audit, real-browser group storage behavior, multi-writer device coordination, or permanent relay retention. Group recovery uses ordinary Nostr requests; Negentropy remains available for public/personal record synchronization. The engine snapshot remains experimental and unpublished by this project.
+
 ## Engineering baseline completion
 
 The baseline keeps npm, Biome, TypeScript, Vitest, Playwright, and the existing SDK/test architecture. Independent static review found and resolved deletion-only hook handling and source-symlink snapshot boundaries. The [engineering guide](engineering.md) records the inventory, command contract, worktree policy, ownership, controls, and external setup limits.
@@ -66,9 +91,9 @@ One initial Damus run accepted a synthetic record, but its cleanup failed and th
 
 Evidence remains in `output/environment/live/`, including `compatibility-1791104500826-73172.json` for the initial cleanup failure, `negentropy-probe-1791105066603.json` for the server notice, and `compatibility-1791105422565-253.json` for PNG upload, CDN byte verification, and deletion. The [live project guide](../integration/live/README.md) documents configuration and repeatable commands.
 
-## Test expansion
+## Previous test expansion
 
-The current suite has **224 tests across 18 files**, split into 174 unit/component tests and 50 integration tests. Both projects pass locally on Node 22.12.0 and 26.3.0. The [testing guide](testing.md) maps tests to contracts and explains fixtures, commands, and limits.
+Before Marmot groups, the suite had **224 tests across 18 files**, split into 174 unit/component tests and 50 integration tests. Both projects passed locally on Node 22.12.0 and 26.3.0. The [testing guide](testing.md) maps the current tests to contracts and explains fixtures, commands, and limits.
 
 | Current check | Result |
 | --- | --- |

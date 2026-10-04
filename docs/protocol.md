@@ -67,6 +67,20 @@ Broadcast and Presence use signed kind `20078` events. The `t` scope is `nostrba
 
 Readers verify signatures, scope, body version, expiry, and ordering. Presence expires locally and is refreshed by heartbeats. These are public ephemeral messages. They are not persisted, queued, or recovered by Negentropy. See [realtime](realtime.md) for timing and lifecycle rules.
 
+## Shared private group records v1
+
+Shared collections use the pinned current Marmot profile and account identity proofs, not the deprecated MIP-era formats. See [groups](groups.md) and [engine provenance](../vendor/README.md). KeyPackages use kind `30443`; NIP-59 Welcomes carry unsigned kind `444`; MLS group envelopes use signed kind `445`, a fresh ephemeral author, and the random group routing `h` tag.
+
+An MLS application payload is an unsigned Nostr-shaped kind `30078` event with exactly `id`, `pubkey`, `created_at`, `kind`, `tags`, and `content`. Its ID is the canonical NIP-01 hash. It has no top-level signature. Marmot verifies that its author matches the authenticated MLS sender account.
+
+The sole tag is `["t", "nostrbase-group-records:v1:<encoded namespace>:<private MLS group ID hex>"]`. The JSON content has exactly `{v:1,namespace,groupId,type,proofs}`. `type` is `record` or `snapshot`. `proofs` contains at most 1000 fully signed original record/deletion events. A record message contains at least one proof; all its proofs have the sender's author and one table. A snapshot can contain different original authors and tables and must come from a current group admin.
+
+Nested record proofs use public record v1 encoding with the internal table route `group:<private MLS group ID hex>:<user table>`. Deletion proofs use that same scope and author-owned `a`/`e` pointers. All proof signatures, routes, fields, timestamps, and configured schemas must pass validation before materialization. Only the original author can change a record. Nested proofs and reconstructed plaintext never enter the public relay stream or ordinary EventStore.
+
+Readers retain accepted proofs with the MLS state confirmation tag, and materialize only tags on the engine's canonical ancestry. The record timestamp/event-ID rule selects record versions; it never selects an MLS fork. Removed authors cannot introduce new admitted mutations after the reader has selected their removal. Previously admitted rows remain. An admin snapshot attests historical admission and retains each author's signature. Newly invited members receive these snapshots in the current epoch; Welcomes alone do not reveal past records.
+
+Outgoing device state, signed intents, exact envelopes, Welcome retry obligations, and projections use separate NIP-44 self-encrypted local stores partitioned by namespace/account/device. The publication WAL precedes network delivery. Accepted own commits recover from their exact staged child snapshot and stamped fork history. They cannot be reconstructed by decrypting the committer's own ciphertext from the old state. A relay ACK proves that relay accepted the envelope; it does not prove global or permanent storage.
+
 ## Cache, replay, and recovery
 
 Persistence stores signed original events and deletion tombstones, including private ciphertext. Restore deletes before records. A signed queue persists exact events before exposing optimistic local changes. Replay keeps their IDs, timestamps, signatures, and author; it requires the active account to match and collects relay acknowledgements.
@@ -106,7 +120,7 @@ This SDK provides public and personal encrypted records for client apps. A table
 
 A namespace is a data label, not an access boundary. An author signature proves origin, not approval or truth. Use trusted-author rules in the app when a collection needs moderation or curated content.
 
-For a large app, design narrower collections, choose suitable relays, and manage storage usage. History and tombstones currently have no automatic eviction. Channels also subscribe to kind-5 events for cross-client deletion support. There is no automatic outbox discovery, shared private authorization, or server policy layer.
+For a large app, design narrower collections, choose suitable relays, and manage storage usage. History and tombstones currently have no automatic eviction. Channels also subscribe to kind-5 events for cross-client deletion support. Experimental shared private authorization uses Marmot groups. There is no automatic outbox discovery or server policy layer.
 
 ## Compatibility
 

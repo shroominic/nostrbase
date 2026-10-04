@@ -5,6 +5,7 @@ import type { EventTemplate, Filter, NostrEvent } from "nostr-tools";
 import type { Observable } from "rxjs";
 import type { DiagnosticsOptions } from "./diagnostics";
 import type { NostrbaseError } from "./errors";
+import type { GroupsOptions } from "./groups";
 import type { OfflineOptions } from "./offline";
 import type { PersistenceOptions } from "./persistence";
 import type { StorageOptions } from "./storage";
@@ -86,6 +87,7 @@ export interface ClientOptions<DB extends SchemaShape<DB>> {
   sync?: SyncOptions;
   storage?: StorageOptions;
   diagnostics?: DiagnosticsOptions;
+  groups?: GroupsOptions;
 }
 export interface User {
   id: string;

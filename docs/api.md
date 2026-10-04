@@ -240,11 +240,12 @@ Zod inference, migrations, references, backups, diagnostics, and the local dashb
 - [Broadcast and Presence](realtime.md): signed public channel messages, session state, heartbeat, and expiry.
 - [Offline and sync](offline-sync.md): IndexedDB cache, explicit signed write queue, and NIP-77 Negentropy recovery with query fallback.
 - [Private records and files](private-storage.md): personal NIP-44 tables and Blossom storage.
+- [Shared private collections](groups.md): experimental Marmot/MLS groups, invitations, encrypted CRUD, and device recovery.
 - [Search and tools](tooling.md): local text search, NIP-50 raw search, cursor pages, Zod, references, migrations, backups, diagnostics, and dashboard.
 
 ## Nostr constraints
 
-- Public table data and index tags are public. Personal private tables encrypt the body, but author and routing metadata remain public. There is no shared private table or server-enforced RLS.
+- Public table data and index tags are public. Personal private tables encrypt the body, but author and routing metadata remain public. Experimental shared collections use Marmot group membership; there is no configurable server-enforced RLS.
 - Relays provide storage, delivery, and their own policy. Relay acceptance does not guarantee permanent retention, complete reads, or deletion from every copy.
 - Versions use the latest timestamp, then the lowest event id for a tie. Concurrent edits on different devices can overwrite each other. There are no transactions, foreign keys, global uniqueness rules, or SQL joins.
 - The SDK uses a monotonically increasing timestamp per known address. Many updates within one second can move timestamps into the future. A relay can reject those events; use an app write rate suited to its policy.
