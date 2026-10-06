@@ -25,6 +25,12 @@ export { NostrbaseEvents } from "./events";
 export type { GroupStateAdapter } from "./group-store";
 export { IndexedDBGroupStateAdapter, MemoryGroupStateAdapter } from "./group-store";
 export type {
+  GroupStateBackup,
+  GroupStateBackupEntry,
+  GroupStateBackupImport,
+} from "./group-backup";
+export { exportGroupStateBackup, importGroupStateBackup } from "./group-backup";
+export type {
   CreatePrivateGroupOptions,
   GroupChangePayload,
   GroupsOptions,
@@ -70,14 +76,25 @@ export { defineSchema, defineTable, zodTable } from "./schema";
 export type {
   BlobDescriptor,
   BlobRemoval,
+  FileEncryptionMetadata,
+  FileKey,
+  PrivateStoredBlob,
+  QueuedUpload,
+  ResumableUploadOptions,
   StorageDownloadOptions,
   StorageListOptions,
   StorageOptions,
   StorageRequestOptions,
   StorageUploadOptions,
+  StorageUploadQueueAdapter,
   StoredBlob,
+  UploadProgress,
 } from "./storage";
-export { NostrbaseStorage } from "./storage";
+export {
+  IndexedDBStorageUploadQueueAdapter,
+  MemoryStorageUploadQueueAdapter,
+  NostrbaseStorage,
+} from "./storage";
 export type { SyncMeta, SyncOptions, SyncPullOptions, SyncRelayResult, SyncResult } from "./sync";
 export { NostrbaseSync } from "./sync";
 export { ApplesauceTransport } from "./transport";

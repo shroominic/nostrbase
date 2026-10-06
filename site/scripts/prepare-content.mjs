@@ -7,6 +7,8 @@ import { protocolDiagram } from "./protocol-diagram.mjs";
 const root = resolve(import.meta.dirname, "../..");
 const site = resolve(root, "site");
 const catalog = JSON.parse(await readFile(resolve(site, "src/catalog.json"), "utf8"));
+const basePath = (process.env.BASE_PATH ?? "").replace(/\/$/, "");
+const sitePath = (route) => `${basePath}${route}`;
 const output = resolve(site, "src/content/docs");
 const rawOutput = resolve(site, "public/content");
 await mkdir(output, { recursive: true });
@@ -28,10 +30,10 @@ const sourceExports = new Map();
 const sourceRoutes = new Map(
   [...catalog.groups.flatMap((group) => group.items), ...(catalog.support ?? [])]
     .filter((entry) => !entry.section)
-    .map((entry) => [resolve(root, entry.source), `/docs/${entry.slug}/`]),
+    .map((entry) => [resolve(root, entry.source), sitePath(`/docs/${entry.slug}/`)]),
 );
-sourceRoutes.set(resolve(root, "CONTRIBUTING.md"), "/docs/contributing/");
-sourceRoutes.set(resolve(root, "README.md"), "/");
+sourceRoutes.set(resolve(root, "CONTRIBUTING.md"), sitePath("/docs/contributing/"));
+sourceRoutes.set(resolve(root, "README.md"), sitePath("/"));
 const linkMap = {
   "integration/README.md": "/docs/environment-integration/",
   "../integration/README.md": "/docs/environment-integration/",
@@ -57,13 +59,13 @@ function rewriteLinks(body, source) {
     const resolved = resolve(root, dirname(source), file);
     const route = sourceRoutes.get(resolved);
     if (route) return `](${route}${fragment ? `#${fragment}` : ""})`;
-    if (linkMap[file]) return `](${linkMap[file]})`;
+    if (linkMap[file]) return `](${sitePath(linkMap[file])})`;
     if (!resolved.startsWith(`${root}/`))
       throw new Error(`Link escapes repository: ${source} → ${target}`);
     const local = relative(root, resolved);
     if (/\.(?:ya?ml|json|ts|mjs)$/.test(local) && !/^(?:output|node_modules|\.git)\//.test(local)) {
       sourceExports.set(resolved, local);
-      return `](/source/${local})`;
+      return `](${sitePath(`/source/${local}`)})`;
     }
     return full;
   });
@@ -308,11 +310,13 @@ await save(
   `## Re-exported classes\n\nnostrbase re-exports these classes unchanged:\n\n| Export | Package | Purpose |\n| --- | --- | --- |\n| \`EventStore\` | applesauce-core | Verified event cache |\n| \`RelayPool\` | applesauce-relay | Relay connections |\n| \`ExtensionSigner\` | applesauce-signers | Browser NIP-07 signer |\n| \`PrivateKeySigner\` | applesauce-signers | Local private-key signer |\n| \`NostrConnectSigner\` | applesauce-signers | NIP-46 remote signer |\n\n[Applesauce documentation](https://applesauce.hzrd149.com/). See [signer setup](/docs/authentication/) and [client integration](/docs/client/).\n\n## Nostr event types\n\n\`NostrEvent\`, \`EventTemplate\`, and \`Filter\` are re-exported from nostr-tools. \`Signer\` aliases the Applesauce \`ISigner\` interface. Use [native event operations](/docs/native-events/) for protocol-specific records.`,
   true,
 );
-const llms = `# nostrbase\n\n> A Supabase-style TypeScript SDK over Nostr, built on Applesauce. SDK 0.2.0; ESM; Node 22.12+ and modern browsers. Not published to npm.\n\n## Documentation\n\n${documents.map((doc) => `- [${doc.title}](/content/${doc.slug}.md): ${doc.description}`).join("\n")}\n\n## Complete text\n\n- [All documentation](/llms-full.txt)\n`;
+const llms = `# nostrbase\n\n> A Supabase-style TypeScript SDK over Nostr, built on Applesauce. SDK 0.2.0; ESM; Node 22.12+ and modern browsers. Not published to npm.\n\n## Documentation\n\n${documents.map((doc) => `- [${doc.title}](${sitePath(`/content/${doc.slug}.md`)}): ${doc.description}`).join("\n")}\n\n## Complete text\n\n- [All documentation](${sitePath("/llms-full.txt")})\n`;
 await writeChanged(resolve(site, "public/llms.txt"), llms);
 await writeChanged(
   resolve(site, "public/llms-full.txt"),
-  documents.map((doc) => `${doc.markdown}\nSource: /docs/${doc.slug}/\n`).join("\n---\n\n"),
+  documents
+    .map((doc) => `${doc.markdown}\nSource: ${sitePath(`/docs/${doc.slug}/`)}\n`)
+    .join("\n---\n\n"),
 );
 console.log(
   `Prepared ${documents.length} pages; covered ${documentedExports.size} local exports and 8 external exports.`,

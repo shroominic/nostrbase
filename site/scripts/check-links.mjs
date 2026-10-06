@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "../dist");
+const basePath = (process.env.BASE_PATH ?? "").replace(/\/$/, "");
 async function htmlFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = await Promise.all(
@@ -33,7 +34,9 @@ for (const file of files) {
       target,
       `https://docs.local/${relative(root, file).replace(/index\.html$/, "")}`,
     );
-    const pathname = decodeURIComponent(url.pathname);
+    let pathname = decodeURIComponent(url.pathname);
+    if (basePath && (pathname === basePath || pathname.startsWith(`${basePath}/`)))
+      pathname = pathname.slice(basePath.length) || "/";
     let destination = resolve(root, `.${pathname}`);
     if (!destination.startsWith(`${root}/`) && destination !== root)
       throw new Error(`Link escapes build: ${target}`);
@@ -54,7 +57,10 @@ for (const file of files) {
 const search = JSON.parse(await readFile(resolve(root, "search.json"), "utf8"));
 for (const entry of search) {
   const url = new URL(entry.url, "https://docs.local");
-  const path = resolve(root, `.${url.pathname}`, "index.html");
+  let pathname = decodeURIComponent(url.pathname);
+  if (basePath && (pathname === basePath || pathname.startsWith(`${basePath}/`)))
+    pathname = pathname.slice(basePath.length) || "/";
+  const path = resolve(root, `.${pathname}`, "index.html");
   const html = await read(path);
   if (url.hash && !html.includes(`id="${decodeURIComponent(url.hash.slice(1))}"`))
     errors.push(`search.json → ${entry.url}: missing fragment`);

@@ -1,6 +1,7 @@
 ---
 import Icon from "./Icon.astro";
 ---
+<meta name="nostrbase-base" content={import.meta.env.BASE_URL} />
 <dialog id="search-dialog" aria-labelledby="search-title">
   <div class="search-input-row">
     <Icon name="search" size={20} />
@@ -22,6 +23,7 @@ import Icon from "./Icon.astro";
   let selected = -1;
   let items: HTMLAnchorElement[] = [];
   let opener: HTMLElement | null = null;
+  const basePath = document.querySelector<HTMLMetaElement>("meta[name=nostrbase-base]")?.content.replace(/\/$/, "") ?? "";
   function select(position: number) {
     if (!items.length) return;
     selected = (position + items.length) % items.length;
@@ -79,7 +81,7 @@ import Icon from "./Icon.astro";
     if (!index) {
       status.textContent = "Loading search index…";
       try {
-        const response = await fetch("/search.json");
+        const response = await fetch(`${basePath}/search.json`);
         if (!response.ok) throw new Error("Search index unavailable");
         index = await response.json();
       } catch {

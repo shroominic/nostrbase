@@ -34,6 +34,8 @@ import type { GroupPublicationRecord } from "./group-recovery";
 import { GroupDurability, GroupPublicationPersistenceError } from "./group-recovery";
 import type { GroupStateAdapter } from "./group-store";
 import { EncryptedGroupStore, MemoryGroupStateAdapter } from "./group-store";
+import type { GroupStateBackup, GroupStateBackupImport } from "./group-backup";
+import { exportGroupStateBackup, importGroupStateBackup } from "./group-backup";
 import {
   addressOf,
   compareEvents,
@@ -464,6 +466,53 @@ export class NostrbaseGroups<DB extends SchemaShape<DB> = DefaultSchema> {
   }
   list(): Promise<Result<PrivateGroupInfo[]>> {
     return this.runExclusive(() => this.listNow());
+  }
+
+  /** Export encrypted MLS/device state for this account and stable device ID. */
+  async exportStateBackup(): Promise<Result<GroupStateBackup>> {
+    try {
+      const session = await this.host.auth.getSession();
+      if (session.error) throw session.error;
+      if (!session.data)
+        throw new NostrbaseError("AUTH_REQUIRED", "Sign in before backing up groups.");
+      return {
+        data: await exportGroupStateBackup(
+          this.adapter,
+          this.host.namespace,
+          session.data.user.pubkey,
+          this.deviceId,
+        ),
+        error: null,
+      };
+    } catch (error) {
+      return { data: null, error: groupError(error) };
+    }
+  }
+
+  /** Import encrypted MLS/device state. Use the same account and stable device ID. */
+  async importStateBackup(
+    archive: GroupStateBackup | string,
+  ): Promise<Result<GroupStateBackupImport>> {
+    try {
+      const session = await this.host.auth.getSession();
+      if (session.error) throw session.error;
+      if (!session.data)
+        throw new NostrbaseError("AUTH_REQUIRED", "Sign in before restoring groups.");
+      const account = session.data.user.pubkey;
+      return await this.runExclusive(async () => {
+        this.disposeContext();
+        const data = await importGroupStateBackup(
+          this.adapter,
+          archive,
+          this.host.namespace,
+          account,
+          this.deviceId,
+        );
+        return { data, error: null };
+      });
+    } catch (error) {
+      return { data: null, error: groupError(error) };
+    }
   }
   private async listNow(): Promise<Result<PrivateGroupInfo[]>> {
     const output: PrivateGroupInfo[] = [];

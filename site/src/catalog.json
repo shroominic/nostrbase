@@ -565,6 +565,13 @@
       "guide": "groups"
     },
     {
+      "slug": "reference/group-backup",
+      "title": "Group state backup",
+      "description": "Export and restore encrypted private group device state.",
+      "module": "src/group-backup.ts",
+      "guide": "groups"
+    },
+    {
       "slug": "reference/key-backup",
       "title": "Key backup",
       "description": "Public types and methods for key backup.",

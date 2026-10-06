@@ -1,6 +1,7 @@
 import { getCollection, render } from "astro:content";
 import type { APIRoute } from "astro";
 
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 const plain = (value: string) =>
   value
     .replace(/<\/?(?:figure|svg|title|defs|marker|path|g|text|rect)(?:\s[^>]*)?>/g, " ")
@@ -23,7 +24,7 @@ export const GET: APIRoute = async () => {
         title: entry.data.title,
         group: entry.data.group,
         heading: heading?.text ?? "",
-        url: `/docs/${entry.id}/${heading ? `#${heading.slug}` : ""}`,
+        url: `${base}/docs/${entry.id}/${heading ? `#${heading.slug}` : ""}`,
         text: plain(section),
       });
     }
