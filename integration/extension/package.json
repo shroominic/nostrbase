@@ -13,6 +13,6 @@
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-qr-code": "2.0.18",
-    "webextension-polyfill": "0.8.0"
+    "webextension-polyfill": "0.12.0"
   }
 }
