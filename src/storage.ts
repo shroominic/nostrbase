@@ -194,7 +194,6 @@ async function sha256(blob: Blob): Promise<string> {
   );
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
-const fileKeyPattern = /^[A-Za-z0-9_-]{43}$/;
 const MAX_ATTACHMENT_BYTES = 128 * 1024 * 1024;
 const FILE_ENCRYPTION_VERSION = 1;
 export interface FileEncryptionMetadata {
@@ -216,13 +215,30 @@ function bytesToBase64url(bytes: Uint8Array): string {
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
+function decodeBase64url(value: string): Uint8Array {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(`${normalized}${"=".repeat((4 - (normalized.length % 4)) % 4)}`);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
 function base64urlBytes(value: string, label: string): Uint8Array {
-  if (!fileKeyPattern.test(value))
+  if (!/^[A-Za-z0-9_-]{43}$/.test(value))
     throw new NostrbaseError("INVALID_QUERY", `${label} must be a base64url 32-byte key.`);
-  const binary = atob(`${value.replace(/-/g, "+").replace(/_/g, "/")}===`);
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  let bytes: Uint8Array;
+  try {
+    bytes = decodeBase64url(value);
+  } catch {
+    throw new NostrbaseError("INVALID_QUERY", `${label} must be a base64url 32-byte key.`);
+  }
   if (bytes.length !== 32)
     throw new NostrbaseError("INVALID_QUERY", `${label} must be a base64url 32-byte key.`);
+  return bytes;
+}
+function base64urlNonce(value: string): Uint8Array {
+  if (!/^[A-Za-z0-9_-]{16}$/.test(value))
+    throw new NostrbaseError("INVALID_QUERY", "File nonce must be a base64url 12-byte nonce.");
+  const bytes = decodeBase64url(value);
+  if (bytes.length !== 12)
+    throw new NostrbaseError("INVALID_QUERY", "File nonce must be a base64url 12-byte nonce.");
   return bytes;
 }
 function fileKeyBytes(key: FileKey): Uint8Array {
@@ -318,10 +334,11 @@ async function decryptFile(
   signal?: AbortSignal,
 ): Promise<Blob> {
   const metadata = fileMetadata(metadataInput);
-  if (source.size < 16 || signal?.aborted)
-    throw new NostrbaseError("ABORTED", "Storage operation was aborted.");
+  if (source.size < 16)
+    throw new NostrbaseError("INVALID_RECORD", "Encrypted attachment ciphertext is truncated.");
+  if (signal?.aborted) throw new NostrbaseError("ABORTED", "Storage operation was aborted.");
   const rawKey = fileKeyBytes(key);
-  const nonce = base64urlBytes(metadata.nonce, "File nonce");
+  const nonce = base64urlNonce(metadata.nonce);
   const cryptoBytes = (bytes: Uint8Array): ArrayBuffer => bytes.slice().buffer as ArrayBuffer;
   try {
     const cryptoKey = await crypto.subtle.importKey("raw", cryptoBytes(rawKey), "AES-GCM", false, [

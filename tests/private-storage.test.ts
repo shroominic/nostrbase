@@ -616,3 +616,121 @@ describe("Blossom storage", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("private and durable file uploads", () => {
+  it("encrypts attachments, authenticates metadata, and rejects wrong keys or tampering", async () => {
+    const { client } = fixture();
+    let stored = new Uint8Array();
+    const fetcher = vi.fn<typeof fetch>(async (_url, init) => {
+      if (init?.method === "PUT") {
+        stored = new Uint8Array(await new Response(init.body).arrayBuffer());
+        const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", stored));
+        const hash = Array.from(digest, (value) => value.toString(16).padStart(2, "0")).join("");
+        return Response.json(
+          {
+            url: `https://files.test/${hash}`,
+            sha256: hash,
+            size: stored.length,
+            type: "application/octet-stream",
+            uploaded: 1,
+          },
+          { status: 201 },
+        );
+      }
+      return new Response(stored, { headers: { "Content-Type": "application/octet-stream" } });
+    });
+    const files = new NostrbaseStorage(client, { fetch: fetcher }).from("https://files.test");
+    const uploaded = await files.uploadPrivate(
+      "secret.txt",
+      new Blob(["private bytes"], { type: "text/plain" }),
+    );
+    expect(uploaded.error).toBeNull();
+    if (!uploaded.data) throw new Error("Expected encrypted upload descriptor");
+    const descriptor = uploaded.data;
+    expect(descriptor.key).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(descriptor.encryption.type).toBe("text/plain");
+    expect(stored).not.toEqual(new TextEncoder().encode("private bytes"));
+    const downloaded = await files.downloadPrivate(
+      descriptor.sha256,
+      descriptor.encryption,
+      descriptor.key,
+    );
+    expect(downloaded.error).toBeNull();
+    expect(await downloaded.data?.text()).toBe("private bytes");
+    expect(
+      (await files.downloadPrivate(descriptor.sha256, descriptor.encryption, "A".repeat(43))).error
+        ?.code,
+    ).toBe("PERMISSION_DENIED");
+    const tampered = { ...descriptor.encryption, name: "changed.txt" };
+    expect(
+      (await files.downloadPrivate(descriptor.sha256, tampered, descriptor.key)).error?.code,
+    ).toBe("PERMISSION_DENIED");
+  });
+
+  it("recovers a resumable offset and preserves progress", async () => {
+    const { client } = fixture();
+    const chunks: number[] = [];
+    const fetcher = vi.fn<typeof fetch>(async (_url, init) => {
+      if (init?.method === "HEAD")
+        return new Response(null, { status: 200, headers: { "Upload-Offset": "2" } });
+      const range = new Headers(init?.headers).get("Content-Range");
+      if (!range) throw new Error("Missing Content-Range");
+      const match = /bytes (\d+)-(\d+)\/(\d+)/.exec(range);
+      if (!match) throw new Error("Invalid Content-Range");
+      chunks.push(Number(match[2]) - Number(match[1]) + 1);
+      const end = Number(match[2]);
+      if (end < Number(match[3]) - 1) return new Response(null, { status: 308 });
+      const hash = new Headers(init?.headers).get("X-SHA-256");
+      if (!hash) throw new Error("Missing X-SHA-256");
+      return Response.json({
+        url: `https://files.test/${hash}`,
+        sha256: hash,
+        size: Number(match[3]),
+        type: "application/octet-stream",
+        uploaded: 1,
+      });
+    });
+    const files = new NostrbaseStorage(client, { fetch: fetcher }).from("https://files.test");
+    const progress: number[] = [];
+    const result = await files.upload("resume.bin", new Blob([new Uint8Array(131074).fill(7)]), {
+      resumable: {
+        id: "upload-1",
+        chunkSize: 65536,
+        onProgress: (value) => progress.push(value.uploaded),
+      },
+    });
+    expect(result.error).toBeNull();
+    expect(chunks).toEqual([65536, 65536]);
+    expect(progress).toEqual([65538, 131074]);
+  });
+
+  it("keeps queued uploads after a failed replay and removes them after success", async () => {
+    const queue = new (await import("../src/storage")).MemoryStorageUploadQueueAdapter();
+    const { client } = fixture({ storage: { uploadQueue: queue } });
+    let fail = true;
+    const fetcher = vi.fn<typeof fetch>(async (_url, init) => {
+      if (fail) return new Response(null, { status: 503 });
+      const body = new Uint8Array(await new Response(init?.body).arrayBuffer());
+      const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", body));
+      const hash = Array.from(digest, (value) => value.toString(16).padStart(2, "0")).join("");
+      return Response.json({
+        url: `https://files.test/${hash}`,
+        sha256: hash,
+        size: body.length,
+        type: "application/octet-stream",
+        uploaded: 1,
+      });
+    });
+    const files = new NostrbaseStorage(client, { fetch: fetcher, uploadQueue: queue }).from(
+      "https://files.test",
+    );
+    const queued = await files.queueUpload("queued.txt", new Blob(["queued"]));
+    expect(queued.error).toBeNull();
+    expect((await files.listQueuedUploads()).data).toHaveLength(1);
+    expect((await files.replayUploads()).error).not.toBeNull();
+    expect((await files.listQueuedUploads()).data).toHaveLength(1);
+    fail = false;
+    expect((await files.replayUploads()).error).toBeNull();
+    expect((await files.listQueuedUploads()).data).toEqual([]);
+  });
+});
