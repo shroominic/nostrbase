@@ -104,16 +104,16 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
-    "@playwright/test": "1.63.0",
-    "@types/node": "26.6.4",
+    "@playwright/test": "1.64.1",
+    "@types/node": "26.6.5",
     "@types/ws": "8.18.2",
     "deno": "2.9.6",
     "esbuild": "0.28.2",
-    "fake-indexeddb": "6.2.5",
+    "fake-indexeddb": "6.2.6",
     "sharp": "0.35.5",
-    "tsup": "8.5.1",
-    "typescript": "5.9.3",
-    "vitest": "5.0.3",
+    "tsup": "9.0.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5",
     "ws": "8.22.0"
   },
   "overrides": {
